@@ -33,7 +33,7 @@ const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 /* ── Frame sequence config ─────────────────────────────────────────── */
 const TOTAL_FRAMES = 239; // frame_000000.webp … frame_000238.webp
-const FRAME_DIR = "/bottle_frame/";
+const FRAME_DIR = "https://mdpldfpxetgmrtjhcjxr.supabase.co/storage/v1/object/public/bottle-frame/";
 
 function frameUrl(i: number) {
   return `${FRAME_DIR}frame_${String(i).padStart(6, "0")}.webp`;

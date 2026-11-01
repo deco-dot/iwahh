@@ -33,7 +33,7 @@ const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 /* ── Frame sequence config ─────────────────────────────────────────── */
 const TOTAL_FRAMES = 239; // frame_000000.webp … frame_000238.webp
-const FRAME_DIR = "/bottle_frame/";
+const FRAME_DIR = "https://mdpldfpxetgmrtjhcjxr.supabase.co/storage/v1/object/public/bottle-frame/";
 
 function frameUrl(i: number) {
   return `${FRAME_DIR}frame_${String(i).padStart(6, "0")}.webp`;
@@ -544,14 +544,12 @@ export default function HomePage() {
           <div className="pointer-events-auto flex flex-col items-center px-4">
             <span
               className="hero-text-overlay glass mb-5 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] text-[var(--champagne)]"
-             
             >
               <Sparkles size={13} />
               Limited reserve, small batch
             </span>
             <h1
               className="hero-text-overlay text-shimmer select-none font-serif text-[14vw] font-light leading-none tracking-[0.12em] drop-shadow-[0_4px_30px_rgba(0,0,0,0.8)] md:text-[7vw]"
-             
             >
               IWAHH
             </h1>
