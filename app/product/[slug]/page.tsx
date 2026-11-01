@@ -13,17 +13,6 @@ const FREE_SHIPPING_INR = 5000;
 const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
-interface SizeOption {
-  ml: number;
-  oz: string;
-  price: number;
-}
-
-const defaultSizes: SizeOption[] = [
-  { ml: 50, oz: "1.7 fl. oz.", price: 11500 },
-  { ml: 100, oz: "3.4 fl. oz.", price: 16500 },
-];
-
 interface Product {
   id: string;
   name: string;
@@ -34,7 +23,6 @@ interface Product {
   tag?: string;
   concentration?: string;
   description?: string;
-  images?: string[];
 }
 
 interface PageProps {
@@ -100,10 +88,8 @@ export default function ProductDetailPage({ params }: PageProps) {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [selectedSize, setSelectedSize] = useState<SizeOption>(defaultSizes[0]);
   const [quantity, setQuantity] = useState(1);
   const [addedToBag, setAddedToBag] = useState(false);
-  const [activeView, setActiveView] = useState(0);
   const [descOpen, setDescOpen] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
   const [wishlistOpen, setWishlistOpen] = useState(false);
@@ -143,9 +129,6 @@ export default function ProductDetailPage({ params }: PageProps) {
         if (docSnap.exists() && isMounted) {
           const data = { id: docSnap.id, ...docSnap.data() } as Product;
           setProduct(data);
-          if (data.price) {
-            setSelectedSize({ ml: 50, oz: "1.7 fl. oz.", price: data.price });
-          }
 
           const related = catalog.filter((p) => p.id !== productId);
           if (isMounted) setRelatedProducts(related.slice(0, 4));
@@ -181,13 +164,13 @@ export default function ProductDetailPage({ params }: PageProps) {
       .map((p) => ({
         id: p.id,
         name: p.name,
-        price: p.id === product?.id ? selectedSize.price : p.price,
+        price: p.price,
         image: p.image || FALLBACK_IMG,
         quantity: cart[p.id],
       }));
 
     localStorage.setItem("iwahh_cart_items", JSON.stringify(cartDetails));
-  }, [cart, allProducts, product, selectedSize, storageLoaded, loading]);
+  }, [cart, allProducts, storageLoaded, loading]);
 
   const toggleWish = (id: string) => {
     setWishlist((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -212,23 +195,11 @@ export default function ProductDetailPage({ params }: PageProps) {
   const cartItems = allProducts.filter((p) => cart[p.id]);
   const wishlistItems = allProducts.filter((p) => wishlist.includes(p.id));
   const bagCount = cartItems.reduce((n, p) => n + cart[p.id], 0);
-  const subtotal = cartItems.reduce((n, p) => n + cart[p.id] * (p.id === product?.id ? selectedSize.price : p.price), 0);
+  const subtotal = cartItems.reduce((n, p) => n + cart[p.id] * p.price, 0);
   useEffect(() => {
-    setActiveView(0);
     setDescOpen(false);
   }, [productId]);
 
-  /* Gallery: uses product.images when present, otherwise front + two close-up views of the same bottle */
-  const mainSrc = product?.image || FALLBACK_IMG;
-  const gallery =
-    product?.images && product.images.length > 0
-      ? product.images.map((src) => ({ src, zoom: 1, pos: "center" }))
-      : [
-          { src: mainSrc, zoom: 1, pos: "center" },
-          { src: mainSrc, zoom: 2.1, pos: "50% 14%" },
-          { src: mainSrc, zoom: 2.1, pos: "50% 86%" },
-        ];
-  const view = gallery[Math.min(activeView, gallery.length - 1)];
   const isWishlisted = product ? wishlist.includes(product.id) : false;
 
   const drawerClass =
@@ -310,69 +281,26 @@ export default function ProductDetailPage({ params }: PageProps) {
       >
         <div className="relative mx-auto max-w-[1240px] overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1d0809] via-[#130505] to-[#0b0303] md:rounded-[2.5rem]">
           {/* angled shapes (champagne + deep crimson) */}
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-full lg:w-[58%]">
+          /*<div className="pointer-events-none absolute inset-y-0 left-0 w-full lg:w-[58%]">
             <div className="absolute inset-0 bg-[#e9cfa9]/[0.13] [clip-path:polygon(0_0,52%_0,0_72%)]" />
             <div className="absolute inset-0 bg-[#5a0a12]/70 [clip-path:polygon(0_100%,100%_14%,100%_46%,30%_100%)]" />
-          </div>
+          </div>*/
           <div className="pointer-events-none absolute left-[12%] top-[28%] h-72 w-72 rounded-full bg-[#b3122a]/25 blur-[110px]" />
 
           <div className="relative grid grid-cols-1 items-center gap-6 px-5 py-10 md:px-10 md:py-14 lg:grid-cols-2 lg:gap-10">
-            {/* Left: bottle + thumbnails */}
+            {/* Left: bottle */}
             <motion.div variants={fadeInUp} className="flex flex-col items-center">
-              <div className="relative h-[20rem] w-full sm:h-[26rem] lg:h-[30rem]">
+              <div className="relative h-[22rem] w-full sm:h-[28rem] lg:h-[32rem]">
                 <div className="pointer-events-none absolute bottom-3 left-1/2 h-5 w-48 -translate-x-1/2 rounded-full bg-black/70 blur-xl" />
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={activeView}
-                    initial={{ opacity: 0, scale: 0.97 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.35, ease: EASE }}
-                    className="absolute inset-0 overflow-hidden"
-                  >
-                    <Image
-                      src={view.src}
-                      alt={product.name}
-                      fill
-                      priority
-                      unoptimized
-                      sizes="(max-width: 1024px) 100vw, 45vw"
-                      className="object-contain object-center drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)] transition-transform duration-500"
-                      style={{ transform: `scale(${view.zoom})`, transformOrigin: view.pos }}
-                    />
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-
-              {/* Thumbnails: soft tiles, active one lifts */}
-              <div className="mt-5 flex items-center justify-center gap-3">
-                {gallery.map((g, i) => {
-                  const on = i === activeView;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setActiveView(i)}
-                      aria-label={`Show view ${i + 1}`}
-                      aria-pressed={on}
-                      className={`relative h-20 w-20 overflow-hidden rounded-2xl transition-all duration-500 sm:h-24 sm:w-24 ${
-                        on
-                          ? "-translate-y-1 bg-white/[0.12] shadow-[0_18px_40px_rgba(179,18,42,0.4)]"
-                          : "bg-white/[0.05] hover:bg-white/[0.09]"
-                      }`}
-                    >
-                      <Image
-                        src={g.src}
-                        alt=""
-                        fill
-                        unoptimized
-                        sizes="96px"
-                        className="object-contain p-2"
-                        style={{ transform: `scale(${g.zoom})`, transformOrigin: g.pos }}
-                      />
-                    </button>
-                  );
-                })}
+                <Image
+                  src={product.image || FALLBACK_IMG}
+                  alt={product.name}
+                  fill
+                  priority
+                  unoptimized
+                  sizes="(max-width: 1024px) 100vw, 45vw"
+                  className="object-contain object-center drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)]"
+                />
               </div>
             </motion.div>
 
@@ -388,7 +316,7 @@ export default function ProductDetailPage({ params }: PageProps) {
               </div>
 
               <h1 className="mt-3 font-serif text-4xl font-light text-white sm:text-5xl">{product.name}</h1>
-              <p className="mt-2 font-serif text-2xl font-light text-[var(--champagne)]">{inr(selectedSize.price)}</p>
+              <p className="mt-2 font-serif text-2xl font-light text-[var(--champagne)]">{inr(product.price)}</p>
 
               <div className="mt-4 max-w-md">
                 <p className={`text-sm font-light leading-relaxed text-white/60 ${descOpen ? "" : "line-clamp-3"}`}>
@@ -415,30 +343,8 @@ export default function ProductDetailPage({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Size: segmented control */}
-              <div className="mt-5 inline-flex w-fit items-center rounded-full bg-black/30 p-1">
-                {defaultSizes.map((s) => {
-                  const isSelected = selectedSize.ml === s.ml;
-                  return (
-                    <button
-                      key={s.ml}
-                      type="button"
-                      aria-pressed={isSelected}
-                      onClick={() => setSelectedSize(s)}
-                      className={`rounded-full px-5 py-2 text-xs transition-all duration-300 ${
-                        isSelected
-                          ? "bg-gradient-to-br from-[#a3081c] to-[#720000] font-medium text-white shadow-[0_6px_18px_rgba(114,0,0,0.55)]"
-                          : "text-white/55 hover:text-white"
-                      }`}
-                    >
-                      {s.ml} ml
-                    </button>
-                  );
-                })}
-              </div>
-
               {/* Quantity + add to bag + wishlist */}
-              <div className="mt-4 flex max-w-md items-stretch gap-2.5">
+              <div className="mt-6 flex max-w-md items-stretch gap-2.5">
                 <div className="flex items-center gap-1 rounded-full bg-black/30 p-1">
                   <button
                     type="button"
@@ -485,7 +391,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                         exit={{ opacity: 0, y: -6 }}
                         className="flex items-center gap-2"
                       >
-                        <span>Add to bag, {inr(selectedSize.price * quantity)}</span>
+                        <span>Add to bag, {inr(product.price * quantity)}</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -512,7 +418,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                 </p>
                 <p className="flex items-center gap-2">
                   <Truck size={13} className="shrink-0 text-[var(--champagne)]" />
-                  Free pan-India delivery in 3–5 business days
+                  pan-India delivery
                 </p>
                 <p>Two discovery samples and gift packaging included. 30-day returns on unopened bottles.</p>
               </div>
@@ -683,7 +589,7 @@ export default function ProductDetailPage({ params }: PageProps) {
                   <ul className="flex-1 space-y-3 overflow-y-auto px-5 pb-4">
                     <AnimatePresence initial={false}>
                       {cartItems.map((p) => {
-                        const itemPrice = p.id === product.id ? selectedSize.price : p.price;
+                        const itemPrice = p.price;
                         return (
                           <motion.li
                             key={p.id}

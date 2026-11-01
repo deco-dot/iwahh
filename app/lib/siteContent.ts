@@ -5,10 +5,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { MOOD_FAMILIES } from "@/app/lib/products";
 
-/* ------------------------------------------------------------------ */
-/*  Everything editable from /admin lives in ONE Firestore document:    */
-/*  siteContent / home                                                  */
-/* ------------------------------------------------------------------ */
+
 
 export interface FooterColumn {
   title: string;

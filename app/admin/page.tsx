@@ -2,10 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback, type DragEvent, type FormEvent, type ReactNode } from "react";
 import Image from "next/image";
-import { db } from "@/app/lib/firebase";
+import { auth, db } from "@/app/lib/firebase";
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { MOOD_FAMILIES } from "@/app/lib/products";
-import { Trash2, Edit3, X, Plus, Save, Package, UploadCloud, Loader2, Check, Phone, Link2 } from "lucide-react";
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider,
+  signOut,
+  type User,
+} from "firebase/auth";
+import { Trash2, Edit3, X, Plus, Save, Package, UploadCloud, Loader2, Check, Phone, Link2, LogOut, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Settings you may want to change                                     */
@@ -18,6 +27,8 @@ const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
 const DEFAULT_WHATSAPP = "917994654204";
 const SETTINGS_COLLECTION = "settings";
 const SETTINGS_DOC = "store";
+/* The ONLY Google account allowed into this page. Add NEXT_PUBLIC_ADMIN_EMAIL=you@gmail.com to .env.local */
+const PRIMARY_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "samepc944@gmail.com").trim().toLowerCase();
 const ORDER_STATUSES = ["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled"] as const;
 
 interface Product {
@@ -532,6 +543,142 @@ function normalizeNumber(v: string) {
   return digits.length === 10 ? `91${digits}` : digits; // 10 digits = Indian number
 }
 
+
+function AdminPermissionsManager({ notify }: { notify: (type: "ok" | "error", text: string) => void }) {
+  const [emails, setEmails] = useState<string[]>([]);
+  const [newEmail, setNewEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchAdmins = useCallback(async () => {
+    try {
+      const snap = await getDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC));
+      if (snap.exists() && Array.isArray(snap.data().adminEmails)) {
+        setEmails(snap.data().adminEmails.map((e: string) => e.trim().toLowerCase()));
+      }
+    } catch (e) {
+      console.error("Could not fetch admin permissions:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAdmins();
+  }, [fetchAdmins]);
+
+  const addEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    const clean = newEmail.trim().toLowerCase();
+    if (!clean || !clean.includes("@")) {
+      notify("error", "Enter a valid Google email address.");
+      return;
+    }
+    if (clean === PRIMARY_ADMIN || emails.includes(clean)) {
+      notify("error", "This Google account already has permission.");
+      return;
+    }
+    const updated = [...emails, clean];
+    setSaving(true);
+    try {
+      await setDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC), { adminEmails: updated }, { merge: true });
+      setEmails(updated);
+      setNewEmail("");
+      notify("ok", `Granted admin permission to ${clean}`);
+    } catch (err) {
+      console.error(err);
+      notify("error", "Failed to update permissions. Check Firebase rules.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeEmail = async (emailToRemove: string) => {
+    const updated = emails.filter((em) => em !== emailToRemove);
+    setSaving(true);
+    try {
+      await setDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC), { adminEmails: updated }, { merge: true });
+      setEmails(updated);
+      notify("ok", `Revoked permission for ${emailToRemove}`);
+    } catch (err) {
+      console.error(err);
+      notify("error", "Failed to revoke permission.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Admin Permissions"
+      desc="Grant permission to specific Google accounts. Only authorized accounts can log in and make edits."
+    >
+      <div className="space-y-4">
+        {/* Primary Owner */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3.5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <div>
+              <p className="text-xs font-mono text-white">{PRIMARY_ADMIN}</p>
+              <p className="text-[10px] text-white/40">Primary Owner</p>
+            </div>
+          </div>
+          <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-[var(--champagne)]">
+            Owner
+          </span>
+        </div>
+
+        {/* Other authorized emails */}
+        {emails.length > 0 && (
+          <div className="space-y-2">
+            <p className="pl-1 text-[11px] uppercase tracking-wider text-white/50">
+              Additional Authorized Accounts ({emails.length})
+            </p>
+            <ul className="space-y-2">
+              {emails.map((em) => (
+                <li key={em} className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400/70" />
+                    <span className="text-xs font-mono text-white/90">{em}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeEmail(em)}
+                    disabled={saving}
+                    className="rounded-full bg-red-500/10 px-3 py-1 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Form to grant permission to a new Google account */}
+        <form onSubmit={addEmail} className="space-y-2 pt-2">
+          <Field label="Grant permission to new Google account" hint="Enter their Google / Gmail address.">
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="colleague@gmail.com"
+                className="field flex-1"
+              />
+              <button
+                type="submit"
+                disabled={saving || !newEmail.trim()}
+                className="btn-primary flex items-center gap-1.5 rounded-full px-5 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+              >
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />}
+                Grant Access
+              </button>
+            </div>
+          </Field>
+        </form>
+      </div>
+    </Card>
+  );
+}
+
 function WhatsAppSettings({ notify }: { notify: (type: "ok" | "error", text: string) => void }) {
   const [saved, setSaved] = useState(DEFAULT_WHATSAPP);
   const [value, setValue] = useState(DEFAULT_WHATSAPP);
@@ -700,7 +847,7 @@ function OrdersManager({ notify }: { notify: (type: "ok" | "error", text: string
 /*  Page                                                                */
 /* ------------------------------------------------------------------ */
 
-export default function AdminPage() {
+function AdminDashboard({ user, onSignOut }: { user: User; onSignOut: () => void }) {
   const [tab, setTab] = useState<"products" | "orders">("products");
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -742,10 +889,21 @@ export default function AdminPage() {
           <div>
             <p className="font-serif text-xs italic text-[var(--champagne)]">IWAHH</p>
             <h1 className="font-serif text-2xl font-light text-white sm:text-3xl">Store admin</h1>
+            <p className="max-w-[10rem] truncate text-[11px] text-white/40 sm:max-w-xs">{user.email}</p>
           </div>
-          <a href="/shop" target="_blank" rel="noopener noreferrer" className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80 transition hover:bg-white/15">
-            View shop
-          </a>
+          <div className="flex items-center gap-2">
+            <a href="/shop" target="_blank" rel="noopener noreferrer" className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80 transition hover:bg-white/15">
+              View shop
+            </a>
+            <button
+              onClick={onSignOut}
+              aria-label="Sign out"
+              title="Sign out"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15 hover:text-white"
+            >
+              <LogOut size={15} />
+            </button>
+          </div>
         </header>
 
         {/* Tabs */}
@@ -776,4 +934,169 @@ export default function AdminPage() {
       <Toast toast={toast} />
     </main>
   );
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Google sign-in gate (only ADMIN_EMAIL gets in)                      */
+/* ------------------------------------------------------------------ */
+
+function GoogleG() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.9z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 8 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z" />
+      <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.9z" />
+    </svg>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <main className="ix-root relative flex min-h-screen items-center justify-center bg-[var(--bg)] px-4 py-16 text-[var(--fg)] antialiased">
+      <style>{STYLES}</style>
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(179,18,42,0.22),transparent)]" />
+      <div className="glass relative w-full max-w-xs space-y-5 rounded-[1.5rem] p-6 text-center">{children}</div>
+    </main>
+  );
+}
+
+export default function AdminPage() {
+  const [user, setUser] = useState<User | null>(null);
+  const [customAdmins, setCustomAdmins] = useState<string[]>([]);
+  const [checking, setChecking] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    // 1. Fetch authorized admin emails from Firestore
+    const fetchPerms = async () => {
+      try {
+        const snap = await getDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC));
+        if (snap.exists() && Array.isArray(snap.data().adminEmails) && mounted) {
+          setCustomAdmins(snap.data().adminEmails.map((e: string) => e.trim().toLowerCase()));
+        }
+      } catch (err) {
+        console.error("Could not fetch permissions from Firestore:", err);
+      }
+    };
+    fetchPerms();
+
+    // 2. Handle redirect auth result if returning from redirect
+    getRedirectResult(auth).catch((err: unknown) => {
+      console.error("Redirect auth error:", err);
+    });
+
+    // 3. Listen to auth state
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!mounted) return;
+      setUser(u);
+      setChecking(false);
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, []);
+
+  const userEmail = (user?.email || "").trim().toLowerCase();
+  const allowed = !!user && !!userEmail && (userEmail === PRIMARY_ADMIN || customAdmins.includes(userEmail));
+
+  const handleSignIn = async () => {
+    setError("");
+    setBusy(true);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+      if (code === "auth/popup-blocked") {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+      if (code === "auth/unauthorized-domain") {
+        setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
+      } else if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
+        console.error(e);
+        setError("Sign in failed. Please try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSignOut = () => signOut(auth);
+
+  if (checking) {
+    return (
+      <Shell>
+        <Loader2 size={24} className="mx-auto animate-spin text-[#940a0a]" />
+        <p className="text-xs uppercase tracking-widest text-white/50">Verifying authentication…</p>
+      </Shell>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Shell>
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-gradient-to-br from-[#8a0000] to-[#500000] text-white border border-[#720000]/50 shadow-[0_0_25px_rgba(114,0,0,0.5)]">
+          <ShieldAlert size={24} />
+        </div>
+        <div>
+          <p className="font-serif text-xs italic text-[var(--champagne)] mb-1">IWAHH Maison de Parfum</p>
+          <h1 className="font-serif text-2xl font-light text-white sm:text-3xl">Store Admin</h1>
+          <p className="mt-2 text-xs font-light text-white/60 leading-relaxed">
+            Restricted Access. Sign in with your authorized Google account to manage products, pricing, and orders.
+          </p>
+        </div>
+        <button
+          onClick={handleSignIn}
+          disabled={busy}
+          className="flex w-full items-center justify-center gap-3 rounded-full bg-white py-3.5 text-xs font-medium uppercase tracking-wider text-[#1f1f1f] transition-all hover:bg-white/90 disabled:opacity-60 shadow-[0_4px_20px_rgba(255,255,255,0.15)]"
+        >
+          {busy ? <Loader2 size={16} className="animate-spin text-[#1f1f1f]" /> : <GoogleG />}
+          Continue with Google
+        </button>
+        {error && (
+          <p role="alert" className="rounded-xl bg-[#720000]/30 border border-[#720000]/50 px-3.5 py-2.5 text-xs text-[#ffaaaa]">
+            {error}
+          </p>
+        )}
+        <p className="text-[10px] text-white/35 uppercase tracking-widest">
+          Authorized personnel only
+        </p>
+      </Shell>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <Shell>
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-red-500/15 text-red-400 border border-red-500/25">
+          <ShieldAlert size={24} />
+        </div>
+        <div>
+          <h1 className="font-serif text-2xl font-light text-white">Access Denied</h1>
+          <p className="mt-2 text-xs font-light text-white/60 leading-relaxed">
+            The Google account <strong className="text-white block mt-1 break-all font-mono">{user.email}</strong> does not have permission to access or edit this store.
+          </p>
+          <p className="mt-2 text-[11px] text-white/40">
+            Please ask the store owner to grant permission to this email address.
+          </p>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="btn-primary flex w-full items-center justify-center gap-2 rounded-full py-3 text-xs uppercase tracking-wider font-medium text-white"
+        >
+          <LogOut size={14} /> Sign out & switch account
+        </button>
+      </Shell>
+    );
+  }
+
+  return <AdminDashboard user={user} onSignOut={handleSignOut} />;
 }
