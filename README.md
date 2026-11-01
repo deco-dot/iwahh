@@ -18,6 +18,21 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
+## Firebase Authentication
+
+The account page uses Firebase Authentication for email/password sign-in, account creation, Google sign-in, and password reset. In Firebase Console, enable the **Email/Password** and **Google** providers under Authentication, and add your local and deployed domains to the authorized domains list.
+
+Create `.env.local` in the project root with the web app values from Firebase Console:
+
+```dotenv
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+```
+
+Restart the development server after changing environment variables. These Firebase web configuration values are public client settings; do not put service-account credentials in `NEXT_PUBLIC_*` variables.
+
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
 ## Learn More
