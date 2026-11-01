@@ -139,7 +139,7 @@ export default function LegalLayout({
         <article className="glass space-y-8 rounded-[1.5rem] p-5 sm:p-8">{children}</article>
 
         <footer className="mt-8 text-center text-xs text-white/35">
-          <p>© {new Date().getFullYear()} {BUSINESS.brand}. All rights reserved.</p>
+          <p>© {2026} {BUSINESS.brand}. All rights reserved.</p>
         </footer>
       </main>
     </div>
