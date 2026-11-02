@@ -3,147 +3,119 @@ import Link from "next/link";
 import LegalLayout, { Section, P, UL, ContactBlock, BUSINESS } from "@/app/components/LegalLayout";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions | IWAHH",
-  description: "The terms that apply when you browse and order from IWAHH.",
+  title: "Shipping & Returns | IWAHH",
+  description: "Delivery times, charges, cancellations, returns and refunds at IWAHH.",
 };
 
-export default function TermsPage() {
+export default function ShippingReturnsPage() {
   return (
     <LegalLayout
-      active="terms"
-      title="Terms & Conditions"
-      intro="Please read these terms before you order. By using this website or placing an order, you agree to them."
+      active="shipping"
+      title="Shipping & Returns"
+      intro="How long delivery takes, what it costs, and what to do if you need to cancel, return or get a refund."
     >
-      <Section n={1} title="About these terms">
-        <P>
-          This website is run by {BUSINESS.legalName} (“{BUSINESS.brand}”, “we”, “us”). These terms apply to your use of the website and to every
-          order you place with us. If you do not agree, please do not use the website.
-        </P>
+      <Section n={1} title="Where we deliver">
+        <P>We deliver across India. We do not ship outside India at the moment.</P>
       </Section>
 
-      <Section n={2} title="Using the website">
+      <Section n={2} title="Delivery time">
         <UL
           items={[
-            "You must be at least 18 years old to place an order.",
-            "Give us correct and complete details, especially your phone number and delivery address.",
-            "Do not misuse the website, try to break into it, copy it automatically, or use it for anything unlawful.",
+            "Orders are usually packed and dispatched within 1 to 2 business days after we confirm your order and receive payment.",
+            "Delivery then takes about 3 to 5 business days. Remote areas can take a little longer.",
+            "Once your parcel is on its way, we send you the tracking details on WhatsApp.",
+            "Delays can happen because of weather, festivals, strikes or courier issues. We will keep you updated.",
           ]}
         />
       </Section>
 
-      <Section n={3} title="Products and descriptions">
-        <P>
-          We try to describe and photograph every fragrance as accurately as we can. Colours may look slightly different on your screen. Scent is
-          personal: how a fragrance smells and how long it lasts depends on your skin, the weather and how you wear it, so we cannot promise the
-          same result for everyone.
-        </P>
-        <P>
-          Some fragrances are made in small batches. A product may be marked out of stock, changed or withdrawn at any time.
-        </P>
+      <Section n={3} title="Delivery charges">
+        <P>The price shown on each product is the price you pay. We do not add a delivery fee at checkout. If anything else applies to your order, we tell you on WhatsApp before you pay.</P>
       </Section>
 
-      <Section n={4} title="Prices and taxes">
+      <Section n={4} title="Receiving your parcel">
         <UL
           items={[
-            "All prices are in Indian Rupees (₹) and include GST unless we say otherwise.",
-            "Delivery is free on orders above ₹5,000. Below that, a delivery fee is shown at checkout before you order.",
-            "If we find a pricing mistake after you order, we will tell you. You can then choose to continue at the correct price or cancel for a full refund.",
+            "Please check that the delivery address and phone number you give us are correct. We cannot be responsible for a parcel sent to a wrong address you gave us.",
+            "Keep your phone on. The courier will call before delivery. If delivery fails after repeated attempts, the parcel may be returned to us, and we will contact you to send it again (extra delivery charges may apply).",
+            "Please record a short unboxing video when you open your parcel. It helps us sort out any damage quickly.",
+            "If the outer packing looks badly damaged or tampered with, do not accept it, and tell us right away.",
+          ]}
+        />
+        <P>Perfume contains alcohol, so some couriers send it by road or surface only. This is for safety and can affect delivery times.</P>
+      </Section>
+
+      <Section n={5} title="Cancelling an order">
+        <UL
+          items={[
+            "You can cancel before your order is dispatched. Message us on WhatsApp with your name and order details, and we will refund you in full.",
+            "Once an order has been dispatched, it cannot be cancelled. You can still return it under the return rules below.",
           ]}
         />
       </Section>
 
-      <Section n={5} title="Placing an order">
+      <Section n={6} title="Returns">
+        <P>You can return a fragrance within 30 days of delivery if:</P>
+        <UL
+          items={[
+            "The bottle is unopened, unused and still sealed.",
+            "It is in its original box and packaging, with all the items that came with it.",
+          ]}
+        />
         <P>
-          Orders are placed through WhatsApp. When you tap the order button, WhatsApp opens with your order details already written. Your order
-          is only a request until you send that message and we confirm it to you.
-        </P>
-        <P>
-          A contract is formed when we confirm your order on WhatsApp. We may refuse or cancel an order, for example if an item is out of stock,
-          the price was shown wrongly, the details look incorrect, or we cannot deliver to your area. If you have already paid, you will get a
-          full refund.
+          To protect hygiene and safety, we cannot take back bottles that have been opened, sprayed or tested, discovery samples, or products
+          marked as final sale. Return shipping is paid by you, unless the return is because of our mistake (see below).
         </P>
       </Section>
 
-      <Section n={6} title="Payment">
-        <P>
-          We share payment details with you on WhatsApp after we confirm your order. Please pay only to the account details sent to you in that
-          chat by us.
-        </P>
+      <Section n={7} title="Damaged, wrong or faulty items">
+        <P>If your order arrives damaged, leaking, faulty, or is not what you ordered:</P>
         <UL
           items={[
-            "We will never ask for your card PIN, CVV, UPI PIN or an OTP.",
-            "This website does not collect or store your card or bank details.",
-            "If someone else contacts you in our name asking for money, do not pay. Tell us at once.",
+            "Tell us within 48 hours of delivery.",
+            "Send clear photos and your unboxing video on WhatsApp or email.",
+            "We will check it, and send a replacement or give a full refund, including the delivery fee. We also cover the return shipping.",
           ]}
         />
       </Section>
 
-      <Section n={7} title="Delivery, returns and refunds">
+      <Section n={8} title="How to start a return or cancellation">
+        <UL
+          items={[
+            "Contact us on WhatsApp or email with your name, order details and the reason.",
+            "We will reply with the next steps and the return address.",
+            "Pack the item safely in its original box and send it using a trackable service. Please do not send it before we reply.",
+          ]}
+        />
+      </Section>
+
+      <Section n={9} title="Refunds">
+        <UL
+          items={[
+            "Once we receive and check the returned item, we approve your refund and tell you on WhatsApp.",
+            "Refunds are sent to the same account or UPI ID you paid from, usually within 5 to 7 business days after approval. Your bank may take a little longer to show it.",
+            "If we cannot fulfil an order you have already paid for, for example because it sold out, we refund the full amount.",
+            "The original delivery fee is refunded only when the return is due to our mistake or a damaged or faulty item.",
+          ]}
+        />
+      </Section>
+
+      <Section n={10} title="Free samples and gifts">
+        <P>Discovery samples and gift packaging are free extras. They are not returnable or refundable.</P>
+      </Section>
+
+      <Section n={11} title="Need help?">
         <P>
-          Delivery times, charges, cancellations, returns and refunds are explained in our{" "}
-          <Link href="/shipping-returns" className="text-[var(--champagne)] underline underline-offset-4">
-            Shipping &amp; Returns policy
+          We are happy to help. See also our{" "}
+          <Link href="/terms" className="text-[var(--champagne)] underline underline-offset-4">
+            Terms &amp; Conditions
+          </Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-[var(--champagne)] underline underline-offset-4">
+            Privacy Policy
           </Link>
-          , which forms part of these terms.
+          . You can reach {BUSINESS.brand} here:
         </P>
-      </Section>
-
-      <Section n={8} title="Safety and use of fragrance">
-        <P>Perfume contains alcohol and fragrance oils. Please use it with care.</P>
-        <UL
-          items={[
-            "For external use only. Do not swallow. Avoid eyes and broken or irritated skin.",
-            "Flammable. Keep away from flame, heat and direct sunlight. Do not spray near a fire or while smoking.",
-            "Keep out of reach of children.",
-            "Do a patch test first, especially if you have sensitive skin or allergies. Stop using it and see a doctor if you get a reaction.",
-            "Store in a cool, dry place, away from sunlight, to keep the fragrance at its best.",
-          ]}
-        />
-      </Section>
-
-      <Section n={9} title="Our content and intellectual property">
-        <P>
-          The name {BUSINESS.brand}, our logo, fragrance names, images, text and website design belong to us or are used with permission. You may
-          not copy, sell or reuse them without our written consent, except for personal, non-commercial use such as sharing a link.
-        </P>
-      </Section>
-
-      <Section n={10} title="Third-party services">
-        <P>
-          We use services run by other companies, such as WhatsApp, delivery partners and Google. Their own terms and privacy policies apply when
-          you use them. We are not responsible for their services.
-        </P>
-      </Section>
-
-      <Section n={11} title="Our responsibility">
-        <P>
-          We take care to provide the website and products as described. To the extent the law allows, we are not liable for indirect losses, for
-          delays caused by events outside our control (such as weather, strikes or courier problems), or for allergic reactions where the product
-          was used against the safety advice above.
-        </P>
-        <P>
-          Nothing in these terms limits your rights as a consumer under Indian law, including the Consumer Protection Act, 2019, or our liability
-          where it cannot legally be limited.
-        </P>
-      </Section>
-
-      <Section n={12} title="Governing law and disputes">
-        <P>
-          These terms are governed by the laws of India. If a problem arises, please contact us first so we can try to fix it. If we cannot
-          resolve it, the courts at {BUSINESS.courtCity} will have jurisdiction, without affecting your right to approach a consumer commission
-          where you live.
-        </P>
-      </Section>
-
-      <Section n={13} title="Changes to these terms">
-        <P>
-          We may update these terms from time to time. The date at the top shows when they last changed. Orders you have already placed stay
-          under the terms that applied when you placed them.
-        </P>
-      </Section>
-
-      <Section n={14} title="Contact us">
-        <P>Questions about these terms? Reach us here:</P>
         <ContactBlock />
       </Section>
     </LegalLayout>

@@ -542,13 +542,8 @@ export default function HomePage() {
           style={{ top: 0, height: "100vh" }}
         >
           <div className="pointer-events-auto flex flex-col items-center px-4">
-            <span
-              className="hero-text-overlay glass mb-5 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] text-[var(--champagne)]"
-             
-            >
-              <Sparkles size={13} />
-              Limited reserve, small batch
-            </span>
+            
+            
             <h1
               className="hero-text-overlay text-shimmer select-none font-serif text-[14vw] font-light leading-none tracking-[0.12em] drop-shadow-[0_4px_30px_rgba(0,0,0,0.8)] md:text-[7vw]"
              
@@ -564,22 +559,13 @@ export default function HomePage() {
                 <ArrowRight size={15} />
               </Link>
               <Link href="/shop" className="btn-ghost rounded-full px-7 py-3 text-xs text-white">
-                Shop all
+                Shop
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Scroll hint */}
-        <div
-          className="pointer-events-none absolute left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-2 text-xs text-[var(--ink-40)]"
-          style={{ top: "calc(100vh - 64px)" }}
-        >
-          <span className="relative flex h-9 w-6 justify-center rounded-full border border-white/25">
-            <span className="motion-bounce mt-2 h-1.5 w-1 animate-bounce rounded-full bg-[var(--champagne)]" />
-          </span>
-          Scroll to explore
-        </div>
+        
       </section>
 
       {/* ── SECTION 1: SHOWCASE ───────────────────────────────────────────── */}

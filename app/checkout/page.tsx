@@ -4,12 +4,21 @@ import { useState, useEffect, useMemo, type FormEvent, type ReactNode } from "re
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Check,
+  Loader2,
+  ShoppingBag,
+  ShieldCheck,
+  Sparkles,
+  Package,
+  Zap,
+} from "lucide-react";
+import { db } from "@/app/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
-/* WhatsApp number that receives orders (country code + number, no + or spaces) */
-const WHATSAPP_NUMBER = "917994654204";
-const FREE_SHIPPING_INR = 5000;
-const SHIPPING_FEE_INR = 500;
+const DEFAULT_WHATSAPP_NUMBER = "917994654204";
 
 interface CartItem {
   id: string;
@@ -17,7 +26,34 @@ interface CartItem {
   price: number;
   quantity: number;
   image?: string;
+  size?: string;
+  notes?: string;
 }
+
+const COUNTRY_CODES = [
+  { code: "+91", label: "India", flag: "🇮🇳" },
+  { code: "+1", label: "USA/Canada", flag: "🇺🇸" },
+  { code: "+44", label: "United Kingdom", flag: "🇬🇧" },
+  { code: "+971", label: "United Arab Emirates", flag: "🇦🇪" },
+  { code: "+966", label: "Saudi Arabia", flag: "🇸🇦" },
+  { code: "+974", label: "Qatar", flag: "🇶🇦" },
+  { code: "+968", label: "Oman", flag: "🇴🇲" },
+  { code: "+965", label: "Kuwait", flag: "🇰🇼" },
+  { code: "+973", label: "Bahrain", flag: "🇧🇭" },
+  { code: "+65", label: "Singapore", flag: "🇸🇬" },
+  { code: "+60", label: "Malaysia", flag: "🇲🇾" },
+  { code: "+94", label: "Sri Lanka", flag: "🇱🇰" },
+  { code: "+880", label: "Bangladesh", flag: "🇧🇩" },
+  { code: "+61", label: "Australia", flag: "🇦🇺" },
+  { code: "+64", label: "New Zealand", flag: "🇳🇿" },
+  { code: "+49", label: "Germany", flag: "🇩🇪" },
+  { code: "+33", label: "France", flag: "🇫🇷" },
+  { code: "+39", label: "Italy", flag: "🇮🇹" },
+  { code: "+34", label: "Spain", flag: "🇪🇸" },
+  { code: "+41", label: "Switzerland", flag: "🇨🇭" },
+  { code: "+81", label: "Japan", flag: "🇯🇵" },
+  { code: "+82", label: "South Korea", flag: "🇰🇷" },
+];
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
@@ -29,46 +65,55 @@ function WhatsAppIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-/* Same design tokens as the other pages */
 const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Jost:wght@300;400;500;600&display=swap');
 .ix-root {
   font-family: 'Jost', system-ui, sans-serif;
-  --bg: #070303; --fg: #f7f2ee; --champagne: #e9cfa9;
-  --glass: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.015));
+  --bg: #050302; 
+  --panel: #0f0b0a;
+  --fg: #f7f2ee; 
+  --champagne: #e9cfa9;
+  --border: rgba(255,255,255,.06);
+  --border-focus: rgba(233,207,169,.3);
 }
 .ix-root .font-serif { font-family: 'Bodoni Moda','Times New Roman',serif !important; font-weight: 400; }
 .ix-root ::selection { background:#720000; color:#fff; }
-.ix-root .glass {
-  background: var(--glass); border: 1px solid rgba(255,255,255,.09);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 16px 40px rgba(0,0,0,.45);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+.ix-root .premium-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+.ix-root .glass-nav {
+  background: rgba(5,3,2,.7);
+  border: 1px solid rgba(255,255,255,.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 .ix-root .btn-wa {
-  background: linear-gradient(135deg,#2fdc7a 0%,#18a957 55%,#0e7a3e 100%);
-  box-shadow: 0 10px 26px rgba(24,169,87,.35), inset 0 1px 0 rgba(255,255,255,.3);
-  transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s, opacity .3s;
+  background: #1fa855;
+  box-shadow: 0 4px 14px rgba(31,168,85,.2);
+  transition: all .2s ease;
 }
-.ix-root .btn-wa:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 14px 34px rgba(24,169,87,.5), inset 0 1px 0 rgba(255,255,255,.4); }
-.ix-root .btn-primary {
-  background: linear-gradient(135deg,#a3081c 0%,#720000 60%,#560000 100%);
-  box-shadow: 0 8px 22px rgba(114,0,0,.45), inset 0 1px 0 rgba(255,255,255,.22);
-}
+.ix-root .btn-wa:hover:not(:disabled) { background: #23bd5e; box-shadow: 0 6px 20px rgba(31,168,85,.4); }
+.ix-root .btn-wa:active:not(:disabled) { transform: scale(.98); }
 .ix-root .field {
-  width: 100%; border-radius: .875rem; border: 1px solid rgba(255,255,255,.1);
-  background: rgba(255,255,255,.05); padding: .65rem .9rem; font-size: 16px; color: #fff; outline: none; /* 16px stops iOS zoom */
-  transition: border-color .25s, background .25s, box-shadow .25s;
+  width: 100%; border-radius: .75rem; border: 1px solid var(--border);
+  background: rgba(255,255,255,.02); padding: .85rem 1rem;
+  font-size: 15px; color: #fff; outline: none;
+  transition: border-color .2s, background .2s;
 }
-@media (min-width: 640px) { .ix-root .field { font-size: .875rem; } }
-.ix-root .field::placeholder { color: rgba(255,255,255,.28); }
-.ix-root .field:focus { border-color: #b3122a; background: rgba(255,255,255,.07); box-shadow: 0 0 0 3px rgba(179,18,42,.18); }
-.ix-root :focus-visible { outline: 2px solid var(--champagne); outline-offset: 2px; }
+.ix-root .field::placeholder { color: rgba(255,255,255,.2); }
+.ix-root .field:focus { border-color: var(--border-focus); background: rgba(255,255,255,.04); }
+.ix-root select option { background-color: #120505 !important; color: #fff !important; }
+.ix-root select { appearance: none; -webkit-appearance: none; }
 `;
 
 function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1 block pl-1 text-[11px] text-white/55">{label}</span>
+      <span className="mb-2 block pl-1 text-[10px] font-medium uppercase tracking-[0.1em] text-white/40">
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -79,18 +124,22 @@ export default function CheckoutPage() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartLoaded, setCartLoaded] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(false); // mobile only
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [sent, setSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState(DEFAULT_WHATSAPP_NUMBER);
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinNotice, setPinNotice] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    countryCode: "+91",
     phone: "",
+    postalCode: "",
     address: "",
     city: "",
     state: "",
-    postalCode: "",
   });
 
   useEffect(() => {
@@ -98,34 +147,74 @@ export default function CheckoutPage() {
       const savedCart = localStorage.getItem("iwahh_cart_items");
       if (savedCart) setCart(JSON.parse(savedCart));
     } catch (err) {
-      console.error("Failed to load cart from storage", err);
+      console.error("Failed to load cart", err);
     } finally {
       setCartLoaded(true);
     }
   }, []);
 
-  const subtotal = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const shipping = subtotal === 0 || subtotal > FREE_SHIPPING_INR ? 0 : SHIPPING_FEE_INR; // free above ₹5,000
-  const totalAmount = subtotal + shipping;
+  const totalAmount = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
   const itemCount = cart.reduce((n, i) => n + i.quantity, 0);
 
-  const handleChange = (field: string, value: string) => setFormData((prev) => ({ ...prev, [field]: value }));
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "settings", "store"));
+        const n = snap.exists() ? (snap.data().whatsappNumber as string | undefined) : undefined;
+        if (n) setWhatsappNumber(n);
+      } catch (err) {
+        console.error("Could not load WhatsApp number", err);
+      }
+    })();
+  }, []);
+
+  const handleChange = async (field: string, value: string) => {
+    if (field === "postalCode") {
+      const sanitized = value.replace(/\D/g, "").slice(0, 6);
+      setFormData((prev) => ({ ...prev, postalCode: sanitized }));
+      setPinNotice("");
+
+      if (sanitized.length === 6) {
+        setPinLoading(true);
+        try {
+          const res = await fetch(`https://api.postalpincode.in/pincode/${sanitized}`);
+          const data = await res.json();
+          if (data && data[0]?.Status === "Success" && data[0]?.PostOffice?.length > 0) {
+            const postOffice = data[0].PostOffice[0];
+            setFormData((prev) => ({
+              ...prev,
+              city: postOffice.District || postOffice.Block || "",
+              state: postOffice.State || "",
+            }));
+            setPinNotice(`${postOffice.District} auto-detected`);
+          } else {
+            setPinNotice("Invalid PIN code. Enter manually.");
+          }
+        } catch (err) {
+          setPinNotice("Could not auto-fetch location.");
+        } finally {
+          setPinLoading(false);
+        }
+      }
+      return;
+    }
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
 
   const whatsappUrl = useMemo(() => {
     const itemsText = cart.map((i) => `• ${i.name} (x${i.quantity}) - ₹${i.price * i.quantity}`).join("\n");
+    const fullPhone = `${formData.countryCode} ${formData.phone}`;
     const message =
-      `*New Order Inquiry*\n\n` +
-      `*Customer Name:* ${formData.name}\n` +
-      `*Phone:* ${formData.phone}\n` +
+      `*New Order*\n\n` +
+      `*Name:* ${formData.name}\n` +
+      `*Phone:* ${fullPhone}\n` +
       `*Email:* ${formData.email}\n` +
-      `*Delivery Address:* ${formData.address}, ${formData.city}, ${formData.state} - ${formData.postalCode}\n\n` +
-      `*Items Ordered:*\n${itemsText}\n\n` +
-      `*Shipping:* ${shipping === 0 ? "Free" : `₹${shipping}`}\n` +
+      `*Address:* ${formData.address}, ${formData.city}, ${formData.state} - ${formData.postalCode}\n\n` +
+      `*Items:*\n${itemsText}\n\n` +
       `*Total Amount:* ₹${totalAmount.toLocaleString("en-IN")}`;
-    return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
-  }, [cart, formData, shipping, totalAmount]);
+    return `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+  }, [cart, formData, totalAmount, whatsappNumber]);
 
-  // Submit opens WhatsApp with the order message (browser checks required fields first)
   const handleWhatsAppOrder = (e: FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) {
@@ -145,40 +234,29 @@ export default function CheckoutPage() {
     router.push("/shop");
   };
 
-  const bg = (
-    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(179,18,42,0.2),transparent)]" />
-  );
-
-  /* ── AFTER WHATSAPP OPENS ────────────────────────────────────────────── */
   if (sent) {
     return (
       <main className="ix-root relative flex min-h-screen items-center justify-center bg-[var(--bg)] px-4 py-16 text-[var(--fg)]">
         <style>{STYLES}</style>
-        {bg}
-        <div className="glass relative w-full max-w-xs space-y-5 rounded-[1.5rem] p-6 text-center">
-          <div className="btn-wa mx-auto grid h-14 w-14 place-items-center rounded-full text-white">
-            <WhatsAppIcon size={26} />
+        <div className="premium-card w-full max-w-md space-y-6 p-8 text-center">
+          <div className="btn-wa mx-auto grid h-16 w-16 place-items-center rounded-full text-white">
+            <WhatsAppIcon size={28} />
           </div>
-          <div>
-            <h1 className="font-serif text-2xl font-light text-white">One last step</h1>
-            <p className="mt-2 text-sm font-light leading-relaxed text-white/60">
-              Your order message is ready in WhatsApp. Press send there to place your order.
+          <div className="space-y-3">
+            <h1 className="font-serif text-3xl text-white">One last step</h1>
+            <p className="text-sm font-light leading-relaxed text-white/50">
+              Your order message is ready in WhatsApp. Press send there to confirm your order.
             </p>
           </div>
-          <div className="space-y-2">
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn-wa flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-medium text-white"
-            >
-              <WhatsAppIcon size={15} /> Open WhatsApp again
+          <div className="space-y-3 pt-4">
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="btn-wa flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-medium text-white">
+              <WhatsAppIcon size={16} /> Open WhatsApp again
             </a>
-            <button onClick={finishOrder} className="btn-primary w-full rounded-full py-3 text-sm font-medium text-white">
-              I’ve sent my order
+            <button onClick={finishOrder} className="w-full rounded-xl border border-white/10 bg-white/5 py-3.5 text-sm font-medium text-white transition hover:bg-white/10">
+              <span className="inline-flex items-center gap-2"><Check size={16} /> I've sent my order</span>
             </button>
-            <button onClick={() => setSent(false)} className="w-full py-1.5 text-xs text-white/45 underline underline-offset-4 hover:text-white">
-              Edit my details
+            <button onClick={() => setSent(false)} className="text-xs text-white/40 underline underline-offset-4 hover:text-white/70">
+              Edit details
             </button>
           </div>
         </div>
@@ -186,165 +264,310 @@ export default function CheckoutPage() {
     );
   }
 
-  /* ── CHECKOUT ────────────────────────────────────────────────────────── */
   return (
     <main className="ix-root relative min-h-screen bg-[var(--bg)] text-[var(--fg)] antialiased">
       <style>{STYLES}</style>
-      {bg}
 
-      {/* Slim top bar */}
-      <header className="glass fixed left-1/2 top-3 z-40 flex h-11 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2 items-center justify-between rounded-full pl-2 pr-5 text-xs text-white/60">
-        <button
-          onClick={() => router.back()}
-          aria-label="Go back"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 transition hover:bg-white/10 hover:text-white"
-        >
-          <ArrowLeft size={14} />
-        </button>
-        <Link href="/" className="font-serif text-base tracking-[0.4em] text-white">
-          IWAHH
-        </Link>
-        <span className="w-8 text-right text-[11px]">{itemCount > 0 ? itemCount : ""}</span>
+      {/* Background Glow */}
+      <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_-10%,rgba(179,18,42,0.1),transparent)]" />
+
+      {/* DESKTOP HEADER */}
+      <header className="hidden lg:block relative z-10 border-b border-white/[.04]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-5 text-[11px] uppercase tracking-widest text-white/50">
+          <button onClick={() => router.back()} className="flex items-center gap-2 hover:text-white transition">
+            <ArrowLeft size={14} /> Return to shop
+          </button>
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-emerald-400/90 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Checkout Active
+          </div>
+        </div>
       </header>
 
-      <div className="relative z-10 mx-auto max-w-4xl px-4 pb-28 pt-20 lg:pb-12">
-        <h1 className="mb-5 font-serif text-2xl font-light text-white sm:text-3xl">Checkout</h1>
+      {/* MOBILE PILL NAVBAR */}
+      <nav className="glass-nav fixed left-1/2 top-3 z-40 flex h-12 w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 items-center justify-between rounded-full px-2 pl-4 lg:hidden">
+        <button onClick={() => router.back()} className="grid h-8 w-8 place-items-center rounded-full text-white/70 hover:bg-white/10">
+          <ArrowLeft size={16} />
+        </button>
+        <Link href="/" className="font-serif text-base tracking-[0.3em] text-white">IWAHH</Link>
+        <button
+          onClick={() => {
+            document.getElementById("order-summary")?.scrollIntoView({ behavior: "smooth" });
+            setSummaryOpen(true);
+          }}
+          className="flex items-center gap-1.5 rounded-full bg-white/5 px-3 py-1.5 text-[10px] text-white/80 border border-white/10"
+        >
+          BAG {itemCount > 0 ? itemCount : ""}
+        </button>
+      </nav>
 
-        <form id="checkout-form" onSubmit={handleWhatsAppOrder} className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_20rem] lg:items-start">
-          {/* Order summary: collapsible on mobile, always open on desktop. Shown first on mobile. */}
-          <aside className="glass rounded-[1.25rem] lg:order-2 lg:sticky lg:top-20">
-            <button
-              type="button"
-              onClick={() => setSummaryOpen((o) => !o)}
-              aria-expanded={summaryOpen}
-              className="flex w-full items-center justify-between px-4 py-3.5 text-left lg:pointer-events-none"
-            >
-              <span className="text-sm text-white">
-                Your order <span className="text-white/40">({itemCount})</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="font-mono text-sm text-[var(--champagne)]">{inr(totalAmount)}</span>
-                <ChevronDown size={16} className={`text-white/50 transition-transform lg:hidden ${summaryOpen ? "rotate-180" : ""}`} />
-              </span>
-            </button>
+      <div className="relative z-10 mx-auto max-w-6xl px-4 pt-20 pb-32 lg:px-8 lg:pt-12 lg:pb-12">
+        
+        {/* Page Title */}
+        <div className="mb-8 lg:mb-12">
+          <h1 className="font-serif text-3xl lg:text-5xl text-white">Checkout</h1>
+          <p className="mt-2 hidden lg:block text-sm text-white/50">
+            Secure dispatch and private collection handover.
+          </p>
+        </div>
 
-            <div className={`${summaryOpen ? "block" : "hidden"} space-y-3 px-4 pb-4 lg:block`}>
-              {!cartLoaded ? (
-                <p className="py-4 text-center text-xs text-white/40">Loading…</p>
-              ) : cart.length === 0 ? (
-                <div className="space-y-3 py-4 text-center text-xs text-white/45">
-                  <p>Your bag is empty.</p>
-                  <Link href="/shop" className="btn-primary inline-block rounded-full px-5 py-2 text-xs font-medium text-white">
-                    Browse fragrances
-                  </Link>
-                </div>
-              ) : (
-                <ul className="max-h-52 space-y-2 overflow-y-auto">
-                  {cart.map((item) => (
-                    <li key={item.id} className="flex items-center gap-3 text-xs">
-                      <div className="relative h-11 w-9 shrink-0">
-                        {item.image && (
-                          <Image src={item.image} alt={item.name} fill unoptimized className="object-contain drop-shadow-[0_6px_8px_rgba(0,0,0,0.5)]" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-serif text-sm text-white">{item.name}</p>
-                        <p className="text-[11px] text-white/40">Qty {item.quantity}</p>
-                      </div>
-                      <span className="font-mono text-white/80">{inr(item.price * item.quantity)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              <div className="space-y-1.5 border-t border-white/10 pt-3 text-xs text-white/55">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="font-mono">{inr(subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span className="font-mono">{shipping === 0 ? "Free" : inr(shipping)}</span>
-                </div>
-                {cart.length > 0 && shipping > 0 && (
-                  <p className="pt-1 text-[11px] text-[var(--champagne)]/80">Add {inr(FREE_SHIPPING_INR + 1 - subtotal)} more for free delivery</p>
-                )}
-                <div className="flex items-baseline justify-between border-t border-white/10 pt-2.5 text-white">
-                  <span className="text-sm">Total</span>
-                  <span className="font-mono text-base text-[var(--champagne)]">{inr(totalAmount)}</span>
+        <form
+          id="checkout-form"
+          onSubmit={handleWhatsAppOrder}
+          className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr] lg:items-start lg:gap-10"
+        >
+          {/* ── LEFT COLUMN: FORM ── */}
+          <div className="space-y-6">
+            
+            {/* Step 01: Contact */}
+            <section className="premium-card p-5 lg:p-7 space-y-5 lg:space-y-6">
+              <div className="flex items-center justify-between border-b border-white/[.04] pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-white/5 font-mono text-xs text-white/50">01</span>
+                  <h2 className="font-serif text-xl text-white">Customer Details</h2>
                 </div>
               </div>
 
-              {/* Desktop order button */}
-              <button
-                type="submit"
-                disabled={cart.length === 0}
-                className="btn-wa hidden w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 lg:flex"
-              >
-                <WhatsAppIcon /> Order on WhatsApp
-              </button>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label="Full Name">
+                  <input type="text" required value={formData.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="Aarav Sharma" className="field" />
+                </Field>
+                <Field label="Email">
+                  <input type="email" required value={formData.email} onChange={(e) => handleChange("email", e.target.value)} placeholder="aarav@example.com" className="field" />
+                </Field>
+              </div>
+
+              {/* Phone Field - Fully Fixed Dropdown */}
+              <Field label="WhatsApp Number">
+                <div className="flex overflow-hidden rounded-xl border border-[var(--border)] bg-white/[.02] transition focus-within:border-[var(--border-focus)] focus-within:bg-white/[.04]">
+                  {/* Country Selector */}
+                  <div className="relative flex items-center border-r border-[var(--border)] bg-[#050302]">
+                    <select
+                      value={formData.countryCode}
+                      onChange={(e) => handleChange("countryCode", e.target.value)}
+                      className="h-11 w-full cursor-pointer appearance-none bg-transparent pl-3 pr-8 text-sm text-white outline-none"
+                    >
+                      {COUNTRY_CODES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.code}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-white/40" />
+                  </div>
+                  {/* Number Input */}
+                  <input
+                    type="tel"
+                    required
+                    value={formData.phone}
+                    onChange={(e) => handleChange("phone", e.target.value)}
+                    placeholder="9876543210"
+                    className="h-11 min-w-0 flex-1 bg-transparent px-3 text-sm text-white outline-none placeholder:text-white/20"
+                  />
+                </div>
+                <p className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40">
+                  <Zap size={12} className="text-[var(--champagne)]" />
+                  Order updates will be sent here.
+                </p>
+              </Field>
+            </section>
+
+            {/* Step 02: Shipping */}
+            <section className="premium-card p-5 lg:p-7 space-y-5 lg:space-y-6">
+              <div className="flex items-center justify-between border-b border-white/[.04] pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-white/5 font-mono text-xs text-white/50">02</span>
+                  <h2 className="font-serif text-xl text-white">Shipping Address</h2>
+                </div>
+              </div>
+
+              <Field label="Street Address">
+                <textarea
+                  rows={2}
+                  required
+                  value={formData.address}
+                  onChange={(e) => handleChange("address", e.target.value)}
+                  placeholder="Villa 14, Magnolia Enclave, Marine Drive"
+                  className="field resize-none"
+                />
+              </Field>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field label="PIN Code">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={formData.postalCode}
+                      onChange={(e) => handleChange("postalCode", e.target.value)}
+                      placeholder="682001"
+                      className="field pr-8"
+                    />
+                    {pinLoading ? (
+                      <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-white/40" />
+                    ) : formData.postalCode.length === 6 && !pinNotice.includes("Invalid") ? (
+                      <Check size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />
+                    ) : null}
+                  </div>
+                </Field>
+                <Field label="City" className="sm:col-span-1">
+                  <input type="text" required value={formData.city} onChange={(e) => handleChange("city", e.target.value)} placeholder="Auto-filled" className="field" />
+                </Field>
+                <Field label="State" className="sm:col-span-1">
+                  <input type="text" required value={formData.state} onChange={(e) => handleChange("state", e.target.value)} placeholder="Auto-filled" className="field" />
+                </Field>
+              </div>
+              
+              {pinNotice && (
+                <p className={`text-[11px] ${pinNotice.includes("Invalid") ? "text-red-400" : "text-emerald-400"}`}>
+                  {pinNotice.includes("Invalid") ? pinNotice : `• ${pinNotice}`}
+                </p>
+              )}
+            </section>
+          </div>
+
+          {/* ── RIGHT COLUMN: SUMMARY ── */}
+          <aside id="order-summary" className="premium-card overflow-hidden lg:sticky lg:top-8">
+            
+            <div
+              className="flex items-center justify-between px-5 py-4 lg:cursor-default cursor-pointer border-b border-white/[.04]"
+              onClick={() => { if(window.innerWidth < 1024) setSummaryOpen(!summaryOpen) }}
+            >
+              <h2 className="font-serif text-xl text-white flex items-center gap-2">
+                Your Order
+                <span className="font-sans text-xs text-white/40 tracking-wider font-light">({itemCount})</span>
+              </h2>
+              <ChevronDown size={16} className={`text-white/40 transition-transform lg:hidden ${summaryOpen ? "rotate-180" : ""}`} />
+            </div>
+
+            <div className={`${summaryOpen ? "block" : "hidden"} lg:block p-5 space-y-6`}>
+              
+              {/* Items List */}
+              {!cartLoaded ? (
+                <p className="text-center text-xs text-white/40 py-4">Loading…</p>
+              ) : cart.length === 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-sm text-white/40 mb-4">Your bag is empty.</p>
+                  <Link href="/shop" className="inline-block rounded-full bg-white/10 px-6 py-2 text-xs text-white uppercase tracking-widest hover:bg-white/20 transition">Browse Shop</Link>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex gap-4">
+                      <div className="relative h-20 w-16 shrink-0 overflow-hidden rounded-md bg-white/[.02] border border-white/[.04]">
+                        {item.image && <Image src={item.image} alt={item.name} fill unoptimized className="object-cover p-1" />}
+                        {item.size && <span className="absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/80 px-1.5 py-0.5 text-[8px] text-white/80 backdrop-blur-sm">{item.size}</span>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <h3 className="font-serif text-base text-white truncate">{item.name}</h3>
+                          <span className="font-mono text-sm text-white whitespace-nowrap">{inr(item.price * item.quantity)}</span>
+                        </div>
+                        <p className="text-[11px] text-white/40 mt-0.5">Qty {item.quantity}</p>
+                        <p className="text-[11px] text-[var(--champagne)]/70 mt-1 truncate">
+                          {item.notes || "Signature Scent"}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Totals */}
+              <div className="space-y-3 pt-6 border-t border-white/[.04] text-sm">
+                <div className="flex justify-between text-white/60">
+                  <span>Subtotal</span>
+                  <span className="font-mono text-white/90">{inr(totalAmount)}</span>
+                </div>
+                <div className="flex justify-between text-white/60">
+                  <span className="flex items-center gap-2">Delivery <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span></span>
+                  <span className="text-emerald-400">Free</span>
+                </div>
+                <div className="flex justify-between text-white/60">
+                  <span>Taxes</span>
+                  <span className="text-white/90">Included</span>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/[.08]">
+                <p className="text-[10px] uppercase tracking-[0.15em] text-white/40 mb-1">Total</p>
+                <p className="font-serif text-3xl text-[var(--champagne)]">{inr(totalAmount)}</p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={cart.length === 0}
+                  className="btn-wa w-full flex items-center justify-center gap-2.5 rounded-xl py-4 text-sm font-medium uppercase tracking-wider text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <WhatsAppIcon size={18} /> Order on WhatsApp
+                </button>
+                <p className="text-center text-[11px] leading-relaxed text-white/40 mt-4 px-2">
+                  Press send in WhatsApp to confirm. We'll reply with payment and delivery details.
+                </p>
+              </div>
+
+              <div className="bg-white/[.02] rounded-xl p-4 flex gap-3 items-start mt-4 border border-white/[.04]">
+                <Package size={18} className="text-[var(--champagne)] shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-[11px] uppercase tracking-wider text-white/80 mb-1">Gift Packaging</h4>
+                  <p className="text-[11px] leading-relaxed text-white/40">
+                    Free wax-sealed gift note & ribbon with every order.
+                  </p>
+                </div>
+              </div>
             </div>
           </aside>
-
-          {/* Details */}
-          <section className="glass space-y-3 rounded-[1.25rem] p-4 sm:p-5 lg:order-1">
-            <h2 className="text-sm text-white">Your details</h2>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="Full name">
-                <input type="text" required autoComplete="name" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} placeholder="Aarav Sharma" className="field" />
-              </Field>
-              <Field label="Phone">
-                <input type="tel" required autoComplete="tel" inputMode="tel" value={formData.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="+91 98765 43210" className="field" />
-              </Field>
-              <Field label="Email" className="sm:col-span-2">
-                <input type="email" required autoComplete="email" value={formData.email} onChange={(e) => handleChange("email", e.target.value)} placeholder="aarav@example.com" className="field" />
-              </Field>
-            </div>
-
-            <Field label="Address">
-              <textarea rows={2} required autoComplete="street-address" value={formData.address} onChange={(e) => handleChange("address", e.target.value)} placeholder="House no., building, street" className="field resize-none" />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <Field label="City">
-                <input type="text" required autoComplete="address-level2" value={formData.city} onChange={(e) => handleChange("city", e.target.value)} placeholder="Kochi" className="field" />
-              </Field>
-              <Field label="State">
-                <input type="text" required autoComplete="address-level1" value={formData.state} onChange={(e) => handleChange("state", e.target.value)} placeholder="Kerala" className="field" />
-              </Field>
-              <Field label="Postal code" className="col-span-2 sm:col-span-1">
-                <input type="text" required inputMode="numeric" autoComplete="postal-code" value={formData.postalCode} onChange={(e) => handleChange("postalCode", e.target.value)} placeholder="682001" className="field" />
-              </Field>
-            </div>
-
-            {errorMessage && (
-              <p role="alert" className="rounded-xl bg-[#b3122a]/15 px-3.5 py-2 text-xs text-[#ff8a8a]">
-                {errorMessage}
-              </p>
-            )}
-
-            <p className="pt-1 text-[11px] leading-relaxed text-white/40">
-              Tapping the button opens WhatsApp with your order ready to send.
-            </p>
-          </section>
         </form>
+        
+        {/* Footer Trust Badges */}
+        <div className="hidden lg:grid grid-cols-3 gap-6 mt-12 pt-8 border-t border-white/[.04]">
+          <div className="flex items-center gap-3">
+            <ShieldCheck size={20} className="text-white/30" />
+            <div>
+              <p className="text-xs text-white/80 uppercase tracking-wider">100% Authentic</p>
+              <p className="text-[11px] text-white/40">Artisanal Extract Guaranteed</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Sparkles size={20} className="text-white/30" />
+            <div>
+              <p className="text-xs text-white/80 uppercase tracking-wider">Hand-Poured</p>
+              <p className="text-[11px] text-white/40">Batch-Certified Flacons</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <ShoppingBag size={20} className="text-white/30" />
+            <div>
+              <p className="text-xs text-white/80 uppercase tracking-wider">WhatsApp Support</p>
+              <p className="text-[11px] text-white/40">Direct Tracking Updates</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Mobile sticky order bar */}
-      <div className="glass fixed inset-x-3 bottom-3 z-40 flex items-center justify-between gap-3 rounded-full py-1.5 pl-5 pr-1.5 lg:hidden" style={{ marginBottom: "env(safe-area-inset-bottom)" }}>
-        <div className="leading-tight">
-          <p className="text-[10px] text-white/45">Total</p>
-          <p className="font-mono text-sm text-[var(--champagne)]">{inr(totalAmount)}</p>
+      {/* MOBILE STICKY CTA */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[.08] bg-[var(--bg)]/95 px-4 pt-3 backdrop-blur-md lg:hidden"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        <div className="mx-auto flex max-w-md items-center gap-4">
+          <div className="leading-tight">
+            <p className="text-[9px] uppercase tracking-[0.15em] text-white/40 mb-0.5">Total</p>
+            <p className="font-serif text-lg text-[var(--champagne)]">{inr(totalAmount)}</p>
+          </div>
+          <button
+            type="submit"
+            form="checkout-form"
+            disabled={cart.length === 0}
+            className="btn-wa flex flex-1 items-center justify-center gap-2 rounded-xl py-3.5 text-[13px] font-medium uppercase tracking-wider text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <WhatsAppIcon size={16} /> Order on WhatsApp
+          </button>
         </div>
-        <button
-          type="submit"
-          form="checkout-form"
-          disabled={cart.length === 0}
-          className="btn-wa flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <WhatsAppIcon size={15} /> Order on WhatsApp
-        </button>
+        <p className="text-center text-[9px] text-white/30 mt-2">Press send in WhatsApp to confirm</p>
       </div>
     </main>
   );

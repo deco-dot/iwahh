@@ -1,29 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, Minus, Plus, ArrowRight, Truck, ShoppingBag, Check, X } from "lucide-react";
-import { db } from "@/app/lib/firebase";
-import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { Minus, Plus, Truck, ShoppingBag, Check } from "lucide-react";
+import { useProducts, useCart } from "@/app/lib/useStore";
+import { FALLBACK_IMG, fromPrice, hasSizes, inr, isInStock, sizesOf } from "@/app/lib/store";
+import BagDrawer from "@/app/components/BagDrawer";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
-const FREE_SHIPPING_INR = 5000;
-const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
-const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-
-interface Product {
-  id: string;
-  name: string;
-  category: string;
-  price: number;
-  image: string;
-  notes: string[];
-  tag?: string;
-  concentration?: string;
-  description?: string;
-}
 
 interface PageProps {
   params: Promise<{ slug: string }> | { slug: string };
@@ -36,7 +22,7 @@ const fadeInUp = {
 
 const staggerContainer = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.08 } },
 };
 
 /* Same design tokens as the home + shop pages */
@@ -45,8 +31,7 @@ const STYLES = `
 .ix-root {
   font-family: 'Jost', system-ui, sans-serif;
   --bg: #070303; --fg: #f7f2ee; --champagne: #e9cfa9;
-  --ink-90: rgba(247,242,238,.95); --ink-60: rgba(247,242,238,.65);
-  --ink-50: rgba(247,242,238,.5); --ink-40: rgba(247,242,238,.4);
+  --ink-60: rgba(247,242,238,.65);
   --glass: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.015));
   --panel: linear-gradient(160deg, #1b0808 0%, #0f0404 100%);
 }
@@ -64,155 +49,36 @@ const STYLES = `
 .ix-root .btn-primary {
   background: linear-gradient(135deg,#a3081c 0%,#720000 60%,#560000 100%);
   box-shadow: 0 10px 30px rgba(114,0,0,.5), inset 0 1px 0 rgba(255,255,255,.22);
-  transition: transform .4s cubic-bezier(.22,1,.36,1), box-shadow .4s;
+  transition: transform .4s cubic-bezier(.22,1,.36,1), box-shadow .4s, opacity .3s;
 }
-.ix-root .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(179,18,42,.55), inset 0 1px 0 rgba(255,255,255,.3); }
-.ix-root .btn-ghost {
-  border: 1px solid rgba(247,242,238,.22); background: rgba(255,255,255,.04);
-  transition: background .4s, border-color .4s;
-}
-.ix-root .btn-ghost:hover { background: rgba(179,18,42,.28); border-color: rgba(179,18,42,.7); }
-.ix-root .text-shimmer {
-  background: linear-gradient(100deg,#f7f2ee 20%,#e9cfa9 45%,#f7f2ee 70%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
+.ix-root .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 16px 40px rgba(179,18,42,.55), inset 0 1px 0 rgba(255,255,255,.3); }
 .ix-root :focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; }
 `;
 
 export default function ProductClient({ params }: PageProps) {
-  // Resolve params safely using an effect or handling it as a promise without throwing suspense errors in client hooks
+  /* Resolve the route param without suspending */
   const [productId, setProductId] = useState<string | null>(null);
-
   useEffect(() => {
-    Promise.resolve(params).then((resolved) => {
-      setProductId(resolved.slug);
-    });
+    Promise.resolve(params).then((resolved) => setProductId(resolved.slug));
   }, [params]);
 
-  const [product, setProduct] = useState<Product | null>(null);
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
-  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { products, loading } = useProducts(); // live: stock and prices update by themselves
+  const { lines, count, subtotal, add, changeQty } = useCart(products, !loading);
 
+  const product = useMemo(() => products.find((p) => p.id === productId) ?? null, [products, productId]);
+  const related = useMemo(() => products.filter((p) => p.id !== productId).slice(0, 4), [products, productId]);
+
+  const [selectedMl, setSelectedMl] = useState<number | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [addedToBag, setAddedToBag] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
   const [bagOpen, setBagOpen] = useState(false);
-  const [wishlistOpen, setWishlistOpen] = useState(false);
-
-  const [wishlist, setWishlist] = useState<string[]>([]);
-  const [cart, setCart] = useState<Record<string, number>>({});
-  const [storageLoaded, setStorageLoaded] = useState(false);
 
   useEffect(() => {
-    try {
-      const savedWishlist = localStorage.getItem("iwahh_wishlist");
-      const savedCart = localStorage.getItem("iwahh_cart");
-      if (savedWishlist) setWishlist(JSON.parse(savedWishlist));
-      if (savedCart) setCart(JSON.parse(savedCart));
-    } catch (error) {
-      console.error("Error loading shopping state:", error);
-    } finally {
-      setStorageLoaded(true);
-    }
-  }, []);
-
-  // Fetch product data and catalog
-  useEffect(() => {
-    if (!productId) return;
-    let isMounted = true;
-
-    async function fetchProductData() {
-      try {
-        setLoading(true);
-        const docRef = doc(db, "products", productId as string);
-        const docSnap = await getDoc(docRef);
-
-        const allDocsSnap = await getDocs(collection(db, "products"));
-        const catalog = allDocsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Product));
-        if (isMounted) setAllProducts(catalog);
-
-        if (docSnap.exists() && isMounted) {
-          const data = { id: docSnap.id, ...docSnap.data() } as Product;
-          setProduct(data);
-
-          const related = catalog.filter((p) => p.id !== productId);
-          if (isMounted) setRelatedProducts(related.slice(0, 4));
-        } else if (isMounted) {
-          setProduct(null);
-        }
-      } catch (error) {
-        console.error("Error fetching product details:", error);
-        if (isMounted) setProduct(null);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    fetchProductData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [productId]);
-
-  useEffect(() => {
-    if (!storageLoaded) return;
-    localStorage.setItem("iwahh_wishlist", JSON.stringify(wishlist));
-  }, [wishlist, storageLoaded]);
-
-  useEffect(() => {
-    if (!storageLoaded || loading) return;
-    localStorage.setItem("iwahh_cart", JSON.stringify(cart));
-
-    const cartDetails = allProducts
-      .filter((p) => cart[p.id])
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        image: p.image || FALLBACK_IMG,
-        quantity: cart[p.id],
-      }));
-
-    localStorage.setItem("iwahh_cart_items", JSON.stringify(cartDetails));
-  }, [cart, allProducts, storageLoaded, loading]);
-
-  const toggleWish = (id: string) => {
-    setWishlist((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
-  };
-
-  const changeQty = (id: string, d: number) =>
-    setCart((c) => {
-      const next = { ...c, [id]: (c[id] ?? 0) + d };
-      if (next[id] <= 0) delete next[id];
-      return next;
-    });
-
-  const handleAddToBag = () => {
-    if (product) {
-      changeQty(product.id, quantity);
-      setAddedToBag(true);
-      setBagOpen(true);
-      setTimeout(() => setAddedToBag(false), 2200);
-    }
-  };
-
-  const cartItems = allProducts.filter((p) => cart[p.id]);
-  const wishlistItems = allProducts.filter((p) => wishlist.includes(p.id));
-  const bagCount = cartItems.reduce((n, p) => n + cart[p.id], 0);
-  const subtotal = cartItems.reduce((n, p) => n + cart[p.id] * p.price, 0);
-
-  useEffect(() => {
+    setQuantity(1);
+    setSelectedMl(null);
     setDescOpen(false);
   }, [productId]);
-
-  const isWishlisted = product ? wishlist.includes(product.id) : false;
-
-  const drawerClass =
-    "panel fixed right-3 top-3 bottom-3 z-50 flex w-[calc(100%-1.5rem)] max-w-sm flex-col overflow-hidden rounded-[1.5rem]";
-  const closeBtn =
-    "flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/70 transition hover:bg-white/10 hover:text-white";
 
   if (loading || !productId) {
     return (
@@ -229,76 +95,84 @@ export default function ProductClient({ params }: PageProps) {
         <style>{STYLES}</style>
         <h1 className="font-serif text-3xl font-light text-white">Fragrance not found</h1>
         <p className="mt-2 text-xs text-white/50">This fragrance may have been archived.</p>
-        <Link href="/shop" className="btn-primary mt-6 rounded-full px-7 py-3 text-xs font-medium text-white">
+        <Link href="/shop" className="btn-primary mt-6 rounded-full px-7 py-3.5 text-sm font-medium text-white">
           Back to shop
         </Link>
       </div>
     );
   }
 
-  return (
-    <div className="ix-root min-h-screen bg-[var(--bg)] text-[var(--fg)] antialiased selection:bg-[#720000] selection:text-white">
-      <style>{STYLES}</style>
+  /* Sizes, price and stock for what is on screen */
+  const sizes = sizesOf(product);
+  const activeSize = sizes.find((s) => s.ml === selectedMl) ?? sizes[0];
+  const price = activeSize ? activeSize.price : product.price;
+  const inStock = isInStock(product);
+  const total = price * quantity;
 
-      {/* Ambient crimson aura */}
+  const handleAdd = () => {
+    if (!inStock) return;
+    add(product, activeSize?.ml, quantity);
+    setAddedToBag(true);
+    setBagOpen(true);
+    setTimeout(() => setAddedToBag(false), 2200);
+  };
+
+  const AddLabel = ({ short = false }: { short?: boolean }) => (
+    <AnimatePresence mode="wait" initial={false}>
+      {!inStock ? (
+        <motion.span key="out">Out of stock</motion.span>
+      ) : addedToBag ? (
+        <motion.span key="added" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="flex items-center gap-2">
+          <Check size={15} /> Added
+        </motion.span>
+      ) : (
+        <motion.span key="add" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}>
+          {short ? "Add to bag" : `Add to bag, ${inr(total)}`}
+        </motion.span>
+      )}
+    </AnimatePresence>
+  );
+
+  return (
+    <div className="ix-root min-h-screen bg-[var(--bg)] pb-28 text-[var(--fg)] antialiased selection:bg-[#720000] selection:text-white lg:pb-0">
+      <style>{STYLES}</style>
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(179,18,42,0.2),transparent)]" />
 
-      {/* ── FLOATING PILL NAV ─────────────────────────────────────────────── */}
+      {/* Floating pill nav */}
       <nav className="glass fixed left-1/2 top-3 z-40 flex h-12 w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 items-center justify-between rounded-full px-2.5 pl-5 text-xs text-[var(--ink-60)] md:h-14 md:pl-6">
         <Link href="/" className="font-serif text-lg tracking-[0.4em] text-white transition-colors hover:text-[var(--champagne)] md:text-xl">
           IWAHH
         </Link>
         <div className="flex items-center gap-2">
-          <Link href="/shop" className="hidden px-3 transition hover:text-white sm:block">Shop</Link>
-
-          <button
-            onClick={() => setWishlistOpen(true)}
-            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 transition hover:bg-white/10 hover:text-white"
-          >
-            <Heart size={13} className={wishlist.length > 0 ? "fill-[#b3122a] text-[#b3122a]" : "text-[var(--champagne)]"} />
-            <span className="hidden sm:inline">Wishlist</span>
-            {wishlist.length > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#b3122a] px-1 font-mono text-[10px] text-white">
-                {wishlist.length}
-              </span>
-            )}
-          </button>
-
+          <Link href="/shop" className="px-3 py-2 transition hover:text-white">Shop</Link>
           <button
             onClick={() => setBagOpen(true)}
-            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 transition hover:bg-[#720000]/60 hover:text-white"
+            aria-label={`Open bag, ${count} items`}
+            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-4 py-2 transition hover:bg-[#720000]/60 hover:text-white"
           >
-            <ShoppingBag size={13} className="text-[var(--champagne)]" />
-            <span className="hidden sm:inline">Bag</span>
-            {bagCount > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#b3122a] px-1 font-mono text-[10px] text-white">
-                {bagCount}
-              </span>
+            <ShoppingBag size={14} className="text-[var(--champagne)]" />
+            <span>Bag</span>
+            {count > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[#b3122a] px-1 font-mono text-[10px] text-white">{count}</span>
             )}
           </button>
         </div>
       </nav>
 
-      {/* ── HERO BAND: bottle + angled shapes on the left, details on the right ── */}
-      <motion.section
-        initial="hidden"
-        animate="visible"
-        variants={staggerContainer}
-        className="relative z-10 px-3 pt-20 md:px-6 md:pt-24"
-      >
-        <div className="relative mx-auto max-w-[1240px] overflow-hidden rounded-[2rem] bg-gradient-to-br from-[#1d0809] via-[#130505] to-[#0b0303] md:rounded-[2.5rem]">
-          {/* angled shapes (champagne + deep crimson) */}
+      {/* Hero band */}
+      <motion.section initial="hidden" animate="visible" variants={staggerContainer} className="relative z-10 px-3 pt-[4.5rem] md:px-6 md:pt-24">
+        <div className="relative mx-auto max-w-[1240px] overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#1d0809] via-[#130505] to-[#0b0303] md:rounded-[2.5rem]">
           <div className="pointer-events-none absolute inset-y-0 left-0 w-full lg:w-[58%]">
             <div className="absolute inset-0 bg-[#e9cfa9]/[0.13] [clip-path:polygon(0_0,52%_0,0_72%)]" />
             <div className="absolute inset-0 bg-[#5a0a12]/70 [clip-path:polygon(0_100%,100%_14%,100%_46%,30%_100%)]" />
           </div>
-          <div className="pointer-events-none absolute left-[12%] top-[28%] h-72 w-72 rounded-full bg-[#b3122a]/25 blur-[110px]" />
+          <div className="pointer-events-none absolute left-[12%] top-[20%] h-64 w-64 rounded-full bg-[#b3122a]/25 blur-[100px]" />
 
-          <div className="relative grid grid-cols-1 items-center gap-6 px-5 py-10 md:px-10 md:py-14 lg:grid-cols-2 lg:gap-10">
-            {/* Left: bottle */}
+          <div className="relative grid grid-cols-1 items-center gap-2 px-5 pb-8 pt-6 md:px-10 md:py-14 lg:grid-cols-2 lg:gap-10">
+            {/* Bottle */}
             <motion.div variants={fadeInUp} className="flex flex-col items-center">
-              <div className="relative h-[22rem] w-full sm:h-[28rem] lg:h-[32rem]">
-                <div className="pointer-events-none absolute bottom-3 left-1/2 h-5 w-48 -translate-x-1/2 rounded-full bg-black/70 blur-xl" />
+              <div className="relative h-[17rem] w-full sm:h-[26rem] lg:h-[32rem]">
+                <div className="pointer-events-none absolute bottom-2 left-1/2 h-5 w-44 -translate-x-1/2 rounded-full bg-black/70 blur-xl" />
                 <Image
                   src={product.image || FALLBACK_IMG}
                   alt={product.name}
@@ -306,14 +180,19 @@ export default function ProductClient({ params }: PageProps) {
                   priority
                   unoptimized
                   sizes="(max-width: 1024px) 100vw, 45vw"
-                  className="object-contain object-center drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)]"
+                  className={`object-contain object-center drop-shadow-[0_30px_40px_rgba(0,0,0,0.6)] ${inStock ? "" : "opacity-50 grayscale"}`}
                 />
+                {!inStock && (
+                  <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-red-500/25 px-4 py-1.5 text-xs font-medium text-red-100 ring-1 ring-red-400/40 backdrop-blur">
+                    Out of stock
+                  </span>
+                )}
               </div>
             </motion.div>
 
-            {/* Right: details */}
+            {/* Details */}
             <motion.div variants={fadeInUp} className="flex flex-col lg:pl-6">
-              <div className="flex items-center gap-2 text-xs text-white/45">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/45">
                 <span>{product.category}</span>
                 <span>·</span>
                 <span>{product.concentration || "Eau de parfum"}</span>
@@ -322,10 +201,13 @@ export default function ProductClient({ params }: PageProps) {
                 )}
               </div>
 
-              <h1 className="mt-3 font-serif text-4xl font-light text-white sm:text-5xl">{product.name}</h1>
-              <p className="mt-2 font-serif text-2xl font-light text-[var(--champagne)]">{inr(product.price)}</p>
+              <h1 className="mt-2 font-serif text-3xl font-light text-white sm:text-5xl">{product.name}</h1>
+              <p className="mt-1.5 font-serif text-2xl font-light text-[var(--champagne)]">
+                {inr(price)}
+                {activeSize && <span className="ml-2 font-sans text-sm text-white/40">{activeSize.ml} ml</span>}
+              </p>
 
-              <div className="mt-4 max-w-md">
+              <div className="mt-3 max-w-md">
                 <p className={`text-sm font-light leading-relaxed text-white/60 ${descOpen ? "" : "line-clamp-3"}`}>
                   {product.description ||
                     "An immersive olfactory journey designed for climate and presence. Intimate, grounding and quietly unforgettable."}
@@ -333,16 +215,15 @@ export default function ProductClient({ params }: PageProps) {
                 <button
                   type="button"
                   onClick={() => setDescOpen((o) => !o)}
-                  className="mt-1 text-xs text-white/80 underline underline-offset-4 transition hover:text-[var(--champagne)]"
+                  className="mt-1 py-1 text-xs text-white/80 underline underline-offset-4 transition hover:text-[var(--champagne)]"
                 >
                   {descOpen ? "Show less" : "Read more"}
                 </button>
               </div>
 
-              {/* Notes */}
               {(product.notes?.length ?? 0) > 0 && (
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  {product.notes!.map((n) => (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {product.notes.map((n) => (
                     <span key={n} className="rounded-full bg-white/[0.07] px-3.5 py-1.5 text-xs text-white/75">
                       {n}
                     </span>
@@ -350,82 +231,77 @@ export default function ProductClient({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Quantity + add to bag + wishlist */}
-              <div className="mt-6 flex max-w-md items-stretch gap-2.5">
+              {/* Sizes */}
+              {hasSizes(product) && (
+                <div className="mt-5 max-w-md">
+                  <p className="mb-2 pl-1 text-xs text-white/50">Size</p>
+                  <div role="radiogroup" aria-label="Bottle size" className="grid grid-cols-3 gap-2">
+                    {sizes.map((s) => {
+                      const on = s.ml === activeSize?.ml;
+                      return (
+                        <button
+                          key={s.ml}
+                          type="button"
+                          role="radio"
+                          aria-checked={on}
+                          onClick={() => setSelectedMl(s.ml)}
+                          className={`flex min-h-[3.5rem] flex-col items-center justify-center rounded-2xl px-2 py-2 transition-all duration-300 ${
+                            on
+                              ? "bg-gradient-to-br from-[#a3081c] to-[#720000] text-white shadow-[0_8px_22px_rgba(114,0,0,0.5)]"
+                              : "bg-white/[0.06] text-white/65 hover:bg-white/10 hover:text-white"
+                          }`}
+                        >
+                          <span className="text-sm font-medium">{s.ml} ml</span>
+                          <span className="text-[11px] opacity-75">{inr(s.price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Quantity (+ add button on desktop) */}
+              <div className="mt-5 flex max-w-md items-center gap-3">
                 <div className="flex items-center gap-1 rounded-full bg-black/30 p-1">
                   <button
                     type="button"
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-white/65 transition hover:bg-white/10 hover:text-white"
                     aria-label="Decrease quantity"
                   >
-                    <Minus size={14} />
+                    <Minus size={15} />
                   </button>
-                  <span className="min-w-5 text-center font-mono text-xs text-white">{quantity}</span>
+                  <span className="min-w-6 text-center font-mono text-sm text-white">{quantity}</span>
                   <button
                     type="button"
                     onClick={() => setQuantity(quantity + 1)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-white/65 transition hover:bg-white/10 hover:text-white"
                     aria-label="Increase quantity"
                   >
-                    <Plus size={14} />
+                    <Plus size={15} />
                   </button>
                 </div>
 
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
+                <button
                   type="button"
-                  onClick={handleAddToBag}
-                  className="btn-primary flex flex-1 items-center justify-center gap-2 rounded-full py-3 text-sm font-medium text-white"
+                  onClick={handleAdd}
+                  disabled={!inStock}
+                  className="btn-primary hidden h-[3.25rem] flex-1 items-center justify-center gap-2 rounded-full text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 lg:flex"
                 >
-                  <AnimatePresence mode="wait">
-                    {addedToBag ? (
-                      <motion.div
-                        key="added"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        className="flex items-center gap-2"
-                      >
-                        <Check size={15} />
-                        <span>Added to bag</span>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="add"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        className="flex items-center gap-2"
-                      >
-                        <span>Add to bag, {inr(product.price * quantity)}</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.9 }}
-                  type="button"
-                  onClick={() => toggleWish(product.id)}
-                  aria-label={isWishlisted ? "Remove from wishlist" : "Add to wishlist"}
-                  aria-pressed={isWishlisted}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black/30 text-white/70 transition hover:bg-white/10 hover:text-white"
-                >
-                  <Heart size={16} className={isWishlisted ? "fill-[#b3122a] text-[#b3122a]" : ""} />
-                </motion.button>
+                  <AddLabel />
+                </button>
               </div>
 
-              {/* Stock + delivery note */}
+              {/* Stock + notes */}
               <div className="mt-4 max-w-md space-y-1.5 text-xs text-white/45">
                 <p className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#86efac]" />
-                  <span className="text-[#86efac]">In stock</span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${inStock ? "animate-pulse bg-[#86efac]" : "bg-red-400"}`} />
+                  <span className={inStock ? "text-[#86efac]" : "text-red-300"}>{inStock ? "In stock" : "Out of stock"}</span>
                   <span>· GST included</span>
                 </p>
                 <p className="flex items-center gap-2">
                   <Truck size={13} className="shrink-0 text-[var(--champagne)]" />
-                  Free pan-India delivery in 3–5 business days
+                  Delivery across India in 3–5 business days
                 </p>
                 <p>Two discovery samples and gift packaging included. 30-day returns on unopened bottles.</p>
               </div>
@@ -434,232 +310,78 @@ export default function ProductClient({ params }: PageProps) {
         </div>
       </motion.section>
 
-      {/* ── RELATED PRODUCTS ──────────────────────────────────────────────── */}
-      {relatedProducts.length > 0 && (
-        <section className="relative z-10 mx-auto max-w-[1160px] px-4 py-16 md:px-10 md:py-24">
-          <h2 className="mb-10 text-center font-serif text-2xl font-light text-white md:text-4xl">Related products</h2>
+      {/* Related products: swipe on mobile, grid on desktop */}
+      {related.length > 0 && (
+        <section className="relative z-10 mx-auto max-w-[1160px] px-4 py-12 md:px-10 md:py-24">
+          <h2 className="mb-6 text-center font-serif text-2xl font-light text-white md:mb-10 md:text-4xl">Related products</h2>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
-            {relatedProducts.slice(0, 4).map((p) => (
-              <Link key={p.id} href={`/product/${p.id}`} className="group flex flex-col items-center text-center">
-                <div className="relative h-44 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.05] shadow-[0_20px_50px_rgba(0,0,0,0.45)] transition-all duration-500 group-hover:-translate-y-1 group-hover:bg-white/[0.09] group-hover:shadow-[0_24px_60px_rgba(179,18,42,0.3)] sm:h-52">
-                  <Image
-                    src={p.image || FALLBACK_IMG}
-                    alt={p.name}
-                    fill
-                    unoptimized
-                    sizes="(max-width: 768px) 45vw, 22vw"
-                    className="object-contain p-5 drop-shadow-[0_14px_18px_rgba(0,0,0,0.5)] transition-transform duration-700 ease-out group-hover:scale-105"
-                  />
-                </div>
-                <h3 className="mt-4 text-sm font-medium text-white">{p.name}</h3>
-                <span className="mt-1 text-xs text-white/50">{p.price ? inr(p.price) : ""}</span>
-              </Link>
-            ))}
+          <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-4 md:gap-6 md:overflow-visible md:px-0">
+            {related.map((p) => {
+              const ok = isInStock(p);
+              return (
+                <Link key={p.id} href={`/product/${p.id}`} className="group flex w-40 shrink-0 snap-start flex-col items-center text-center md:w-auto">
+                  <div className="relative h-44 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.05] shadow-[0_20px_50px_rgba(0,0,0,0.45)] transition-all duration-500 group-hover:-translate-y-1 group-hover:bg-white/[0.09] sm:h-52">
+                    <Image
+                      src={p.image || FALLBACK_IMG}
+                      alt={p.name}
+                      fill
+                      unoptimized
+                      sizes="(max-width: 768px) 160px, 22vw"
+                      className={`object-contain p-5 drop-shadow-[0_14px_18px_rgba(0,0,0,0.5)] transition-transform duration-700 ease-out group-hover:scale-105 ${ok ? "" : "opacity-45 grayscale"}`}
+                    />
+                    {!ok && (
+                      <span className="absolute left-2 top-2 rounded-full bg-red-500/25 px-2.5 py-1 text-[10px] text-red-100 ring-1 ring-red-400/30">Out of stock</span>
+                    )}
+                  </div>
+                  <h3 className="mt-3 text-sm font-medium text-white">{p.name}</h3>
+                  <span className="mt-0.5 text-xs text-white/50">
+                    {hasSizes(p) ? "From " : ""}
+                    {inr(fromPrice(p))}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* ── WISHLIST DRAWER ───────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {wishlistOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setWishlistOpen(false)}
-              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md"
-            />
-            <motion.aside
-              role="dialog"
-              aria-label="Your wishlist"
-              initial={{ x: "105%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "105%" }}
-              transition={{ duration: 0.6, ease: EASE }}
-              className={drawerClass}
-            >
-              <div className="flex items-center justify-between px-6 py-4">
-                <h2 className="font-serif text-xl text-white">
-                  Your wishlist <span className="text-sm text-white/40">({wishlistItems.length})</span>
-                </h2>
-                <button onClick={() => setWishlistOpen(false)} aria-label="Close wishlist" className={closeBtn}>
-                  <X size={16} />
-                </button>
-              </div>
-
-              {wishlistItems.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                    <Heart size={24} className="text-[#b3122a]" />
-                  </span>
-                  <p className="font-serif text-xl text-white">Your wishlist is empty</p>
-                  <button onClick={() => setWishlistOpen(false)} className="btn-primary rounded-full px-6 py-3 text-xs font-medium text-white">
-                    Explore the collection
-                  </button>
-                </div>
-              ) : (
-                <ul className="flex-1 space-y-3 overflow-y-auto px-5 pb-5">
-                  {wishlistItems.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-2.5">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="relative h-16 w-12 shrink-0">
-                          <Image src={p.image || FALLBACK_IMG} alt={p.name} fill unoptimized className="object-contain" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate font-serif text-base text-white">{p.name}</p>
-                          <p className="font-mono text-xs text-white/60">{inr(p.price)}</p>
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            changeQty(p.id, 1);
-                            toggleWish(p.id);
-                            setWishlistOpen(false);
-                            setBagOpen(true);
-                          }}
-                          className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-medium text-white"
-                        >
-                          Move to bag
-                        </button>
-                        <button onClick={() => toggleWish(p.id)} aria-label={`Remove ${p.name}`} className="flex h-7 w-7 items-center justify-center rounded-full text-white/40 transition hover:bg-white/10 hover:text-white">
-                          <X size={13} />
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ── BAG DRAWER ────────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {bagOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setBagOpen(false)}
-              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md"
-            />
-            <motion.aside
-              role="dialog"
-              aria-label="Your bag"
-              initial={{ x: "105%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "105%" }}
-              transition={{ duration: 0.6, ease: EASE }}
-              className={drawerClass}
-            >
-              <div className="flex items-center justify-between px-6 py-4">
-                <h2 className="font-serif text-xl text-white">
-                  Your bag <span className="text-sm text-white/40">({bagCount})</span>
-                </h2>
-                <button onClick={() => setBagOpen(false)} aria-label="Close bag" className={closeBtn}>
-                  <X size={16} />
-                </button>
-              </div>
-
-              {cartItems.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-                  <span className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                    <ShoppingBag size={24} className="text-[#b3122a]" />
-                  </span>
-                  <p className="font-serif text-xl text-white">Your bag is empty</p>
-                  <button onClick={() => setBagOpen(false)} className="btn-primary rounded-full px-6 py-3 text-xs font-medium text-white">
-                    Keep browsing
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="mx-5 mb-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs">
-                    <p className="text-white/70">
-                      {subtotal >= FREE_SHIPPING_INR
-                        ? "You’ve unlocked complimentary pan-India shipping."
-                        : `Add ${inr(FREE_SHIPPING_INR - subtotal)} more for complimentary shipping.`}
-                    </p>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <motion.div
-                        animate={{ width: `${Math.min(100, (subtotal / FREE_SHIPPING_INR) * 100)}%` }}
-                        transition={{ duration: 0.6, ease: EASE }}
-                        className="h-full rounded-full bg-gradient-to-r from-[#720000] to-[#e9cfa9]"
-                      />
-                    </div>
-                  </div>
-
-                  <ul className="flex-1 space-y-3 overflow-y-auto px-5 pb-4">
-                    <AnimatePresence initial={false}>
-                      {cartItems.map((p) => {
-                        const itemPrice = p.price;
-                        return (
-                          <motion.li
-                            key={p.id}
-                            layout
-                            initial={{ opacity: 0, x: 30 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 30 }}
-                            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-2.5"
-                          >
-                            <div className="relative h-16 w-12 shrink-0">
-                              <Image src={p.image || FALLBACK_IMG} alt={p.name} fill unoptimized sizes="48px" className="object-contain" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex justify-between gap-2">
-                                <p className="truncate font-serif text-base text-white">{p.name}</p>
-                                <p className="font-mono text-xs text-white">{inr(itemPrice * cart[p.id])}</p>
-                              </div>
-                              <p className="text-[11px] text-white/40">{p.concentration || "Eau de parfum"}</p>
-                              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1 text-white/70">
-                                <button onClick={() => changeQty(p.id, -1)} aria-label={`Remove one ${p.name}`} className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white">
-                                  <Minus size={12} />
-                                </button>
-                                <span className="min-w-4 text-center font-mono text-xs text-white">{cart[p.id]}</span>
-                                <button onClick={() => changeQty(p.id, 1)} aria-label={`Add one ${p.name}`} className="flex h-6 w-6 items-center justify-center rounded-full transition hover:bg-white/10 hover:text-white">
-                                  <Plus size={12} />
-                                </button>
-                              </div>
-                            </div>
-                          </motion.li>
-                        );
-                      })}
-                    </AnimatePresence>
-                  </ul>
-
-                  <div className="m-3 rounded-[1.25rem] border border-white/10 bg-black/30 p-4">
-                    <div className="mb-1 flex items-baseline justify-between">
-                      <span className="text-xs text-white/60">Subtotal</span>
-                      <span className="font-mono text-base text-white">{inr(subtotal)}</span>
-                    </div>
-                    <p className="mb-4 text-[11px] text-white/35">Two complimentary samples with every order. GST included.</p>
-                    <Link href="/checkout" className="btn-primary flex w-full items-center justify-center gap-2 rounded-full py-3.5 text-sm font-medium text-white">
-                      Proceed to checkout <ArrowRight size={14} />
-                    </Link>
-                  </div>
-                </>
-              )}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* ── FOOTER ────────────────────────────────────────────────────────── */}
+      {/* Footer */}
       <footer className="relative z-10 px-3 pb-3 md:px-6 md:pb-6">
         <div className="panel mx-auto flex max-w-[1240px] flex-col items-center justify-between gap-4 rounded-[1.75rem] px-6 py-6 text-xs text-white/40 sm:flex-row md:rounded-[2.25rem] md:px-10">
-          <p>© {new Date().getFullYear()} iwahh Maison de Parfum. All rights reserved.</p>
+          <p>© 2026 iwahh Maison de Parfum. All rights reserved.</p>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
-            <Link href="/privacy" className="transition hover:text-white">Privacy policy</Link>
-            <Link href="/terms" className="transition hover:text-white">Terms &amp; conditions</Link>
-            <Link href="/shipping-returns" className="transition hover:text-white">Shipping &amp; returns</Link>
+            <Link href="/privacy" className="py-1 transition hover:text-white">Privacy policy</Link>
+            <Link href="/terms" className="py-1 transition hover:text-white">Terms &amp; conditions</Link>
+            <Link href="/shipping-returns" className="py-1 transition hover:text-white">Shipping &amp; returns</Link>
             <span>India, INR ₹</span>
           </div>
         </div>
       </footer>
+
+      {/* Mobile sticky buy bar: price always visible, one tap to add */}
+      <div
+        className="glass fixed inset-x-3 bottom-3 z-40 flex items-center justify-between gap-3 rounded-full py-1.5 pl-5 pr-1.5 lg:hidden"
+        style={{ marginBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-[11px] text-white/45">
+            {product.name}
+            {activeSize ? `, ${activeSize.ml} ml` : ""}
+            {quantity > 1 ? ` x${quantity}` : ""}
+          </p>
+          <p className="font-mono text-sm text-[var(--champagne)]">{inr(total)}</p>
+        </div>
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={!inStock}
+          className="btn-primary flex h-12 shrink-0 items-center justify-center rounded-full px-6 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <AddLabel short />
+        </button>
+      </div>
+
+      <BagDrawer open={bagOpen} onClose={() => setBagOpen(false)} lines={lines} count={count} subtotal={subtotal} changeQty={changeQty} />
     </div>
   );
 }

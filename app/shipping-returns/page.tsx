@@ -22,7 +22,7 @@ export default function ShippingReturnsPage() {
         <UL
           items={[
             "Orders are usually packed and dispatched within 1 to 2 business days after we confirm your order and receive payment.",
-            "Delivery then takes about 5 to 15 business days. Remote areas can take a little longer.",
+            "Delivery then takes about 3 to 5 business days. Remote areas can take a little longer.",
             "Once your parcel is on its way, we send you the tracking details on WhatsApp.",
             "Delays can happen because of weather, festivals, strikes or courier issues. We will keep you updated.",
           ]}
@@ -30,12 +30,7 @@ export default function ShippingReturnsPage() {
       </Section>
 
       <Section n={3} title="Delivery charges">
-        <UL
-          items={[
-            "Free delivery on orders above ₹5,000.",
-            "On orders of ₹5,000 or less, a delivery fee of ₹500 is added. You can see it at checkout before you order.",
-          ]}
-        />
+        <P>The price shown on each product is the price you pay. We do not add a delivery fee at checkout. If anything else applies to your order, we tell you on WhatsApp before you pay.</P>
       </Section>
 
       <Section n={4} title="Receiving your parcel">
@@ -60,7 +55,7 @@ export default function ShippingReturnsPage() {
       </Section>
 
       <Section n={6} title="Returns">
-        <P>You can return a fragrance within 10 days of delivery if:</P>
+        <P>You can return a fragrance within 30 days of delivery if:</P>
         <UL
           items={[
             "The bottle is unopened, unused and still sealed.",
