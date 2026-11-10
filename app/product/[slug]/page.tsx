@@ -25,7 +25,7 @@ const staggerContainer = {
   visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.08 } },
 };
 
-/* Same design tokens as the home + shop pages */
+/* Design tokens matching the home and shop pages */
 const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Jost:wght@300;400;500;600&display=swap');
 .ix-root {
@@ -56,13 +56,22 @@ const STYLES = `
 `;
 
 export default function ProductClient({ params }: PageProps) {
-  /* Resolve the route param without suspending */
+  /* Safely unwrap route parameters whether provided as a Promise or object */
   const [productId, setProductId] = useState<string | null>(null);
+  
   useEffect(() => {
-    Promise.resolve(params).then((resolved) => setProductId(resolved.slug));
+    let isMounted = true;
+    Promise.resolve(params).then((resolved) => {
+      if (isMounted) {
+        setProductId(resolved.slug);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, [params]);
 
-  const { products, loading } = useProducts(); // live: stock and prices update by themselves
+  const { products, loading } = useProducts();
   const { lines, count, subtotal, add, changeQty } = useCart(products, !loading);
 
   const product = useMemo(() => products.find((p) => p.id === productId) ?? null, [products, productId]);
@@ -102,7 +111,6 @@ export default function ProductClient({ params }: PageProps) {
     );
   }
 
-  /* Sizes, price and stock for what is on screen */
   const sizes = sizesOf(product);
   const activeSize = sizes.find((s) => s.ml === selectedMl) ?? sizes[0];
   const price = activeSize ? activeSize.price : product.price;
@@ -138,7 +146,7 @@ export default function ProductClient({ params }: PageProps) {
       <style>{STYLES}</style>
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(179,18,42,0.2),transparent)]" />
 
-      {/* Floating pill nav */}
+      {/* Floating pill navigation */}
       <nav className="glass fixed left-1/2 top-3 z-40 flex h-12 w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 items-center justify-between rounded-full px-2.5 pl-5 text-xs text-[var(--ink-60)] md:h-14 md:pl-6">
         <Link href="/" className="font-serif text-lg tracking-[0.4em] text-white transition-colors hover:text-[var(--champagne)] md:text-xl">
           IWAHH
@@ -169,7 +177,7 @@ export default function ProductClient({ params }: PageProps) {
           <div className="pointer-events-none absolute left-[12%] top-[20%] h-64 w-64 rounded-full bg-[#b3122a]/25 blur-[100px]" />
 
           <div className="relative grid grid-cols-1 items-center gap-2 px-5 pb-8 pt-6 md:px-10 md:py-14 lg:grid-cols-2 lg:gap-10">
-            {/* Bottle */}
+            {/* Bottle Image */}
             <motion.div variants={fadeInUp} className="flex flex-col items-center">
               <div className="relative h-[17rem] w-full sm:h-[26rem] lg:h-[32rem]">
                 <div className="pointer-events-none absolute bottom-2 left-1/2 h-5 w-44 -translate-x-1/2 rounded-full bg-black/70 blur-xl" />
@@ -190,7 +198,7 @@ export default function ProductClient({ params }: PageProps) {
               </div>
             </motion.div>
 
-            {/* Details */}
+            {/* Product Details */}
             <motion.div variants={fadeInUp} className="flex flex-col lg:pl-6">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/45">
                 <span>{product.category}</span>
@@ -231,7 +239,7 @@ export default function ProductClient({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Sizes */}
+              {/* Size options */}
               {hasSizes(product) && (
                 <div className="mt-5 max-w-md">
                   <p className="mb-2 pl-1 text-xs text-white/50">Size</p>
@@ -260,7 +268,7 @@ export default function ProductClient({ params }: PageProps) {
                 </div>
               )}
 
-              {/* Quantity (+ add button on desktop) */}
+              {/* Quantity selector & Add button */}
               <div className="mt-5 flex max-w-md items-center gap-3">
                 <div className="flex items-center gap-1 rounded-full bg-black/30 p-1">
                   <button
@@ -292,7 +300,7 @@ export default function ProductClient({ params }: PageProps) {
                 </button>
               </div>
 
-              {/* Stock + notes */}
+              {/* Stock and delivery notices */}
               <div className="mt-4 max-w-md space-y-1.5 text-xs text-white/45">
                 <p className="flex items-center gap-2">
                   <span className={`h-1.5 w-1.5 rounded-full ${inStock ? "animate-pulse bg-[#86efac]" : "bg-red-400"}`} />
@@ -310,7 +318,7 @@ export default function ProductClient({ params }: PageProps) {
         </div>
       </motion.section>
 
-      {/* Related products: swipe on mobile, grid on desktop */}
+      {/* Related products */}
       {related.length > 0 && (
         <section className="relative z-10 mx-auto max-w-[1160px] px-4 py-12 md:px-10 md:py-24">
           <h2 className="mb-6 text-center font-serif text-2xl font-light text-white md:mb-10 md:text-4xl">Related products</h2>
@@ -358,7 +366,7 @@ export default function ProductClient({ params }: PageProps) {
         </div>
       </footer>
 
-      {/* Mobile sticky buy bar: price always visible, one tap to add */}
+      {/* Mobile sticky buy bar */}
       <div
         className="glass fixed inset-x-3 bottom-3 z-40 flex items-center justify-between gap-3 rounded-full py-1.5 pl-5 pr-1.5 lg:hidden"
         style={{ marginBottom: "env(safe-area-inset-bottom)" }}
