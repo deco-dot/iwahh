@@ -1,156 +1,106 @@
 import type { ReactNode } from "react";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
+import Script from "next/script";
+import { SITE } from "@/app/lib/site";
 import "./globals.css";
 
-// Typography
-const serif = Cormorant_Garamond({ 
-  subsets: ["latin"], 
-  weight: ["300", "400", "600"], 
-  variable: "--font-serif" 
-});
+const serif = Cormorant_Garamond({ subsets: ["latin"], weight: ["300", "400"], variable: "--font-serif" });
+const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
-const sans = Inter({ 
-  subsets: ["latin"], 
-  variable: "--font-sans" 
-});
-
-// Domain URL (defaults to iwahh.com or your Vercel deployment URL)
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://iwahh.in";
-
-// SEO & Search Metadata
+/* Site-wide SEO. Every page inherits this and can override title / description.
+   The share picture comes from app/opengraph-image.tsx. */
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE.url),
   title: {
-    default: "iwahh | Luxury Niche & Arabic Perfumes | Formulated for Kerala Humidity",
-    template: "%s | iwahh",
+    default: `${SITE.name} | Small-batch perfume, delivered across India`,
+    template: `%s | ${SITE.name}`,
   },
-  description:
-    "Discover iwahh. Luxury Extraits de Parfum and rich Arabian Oud blends designed for 12+ hour performance in tropical weather. Handcrafted in Kerala, India.",
-  
-  keywords: [
-    // Brand
-    "iwahh",
-    "iwahh perfume",
-    "iwahh fragrance",
-    "iwahh official store",
-    "iwahh extrait de parfum",
-    
-    // Kerala & Regional
-    "luxury perfume brand Kerala",
-    "best long lasting perfume in Kerala",
-    "perfume online delivery Kerala",
-    "buy niche perfumes online Kochi",
-    "perfume store Calicut",
-    "perfume store Trivandrum",
-    
-    // Arabic & Middle Eastern Notes
-    "Arabic perfumes Kerala",
-    "long lasting Arabic fragrance Kerala",
-    "buy Dehn Al Oud Kerala",
-    "smokey Arabian Oud perfume India",
-    "beast mode Arabic perfumes India",
-    "sweet amber musk perfume",
-    "vanilla oud gourmand perfume",
-    "alcohol free Arabic attar India",
-    
-    // Humid Weather & Longevity
-    "best perfume for humid weather India",
-    "monsoon proof long lasting perfumes",
-    "sweat resistant perfumes for men",
-    "high projection tropical fragrance",
-    "30 percent concentration extrait de parfum",
-  ],
-
-  authors: [{ name: "iwahh" }],
-  creator: "iwahh",
-  publisher: "iwahh",
-  
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-
-  alternates: {
-    canonical: "/",
-  },
-
+  description: SITE.description,
+  applicationName: SITE.name,
+  keywords: SITE.keywords,
+  authors: [{ name: SITE.legalName }],
+  creator: SITE.legalName,
+  publisher: SITE.legalName,
+  category: "beauty",
+  formatDetection: { telephone: false, email: false, address: false },
   openGraph: {
-    title: "iwahh | Luxury Niche & Arabic Perfumes",
-    description:
-      "Experience iwahh — high-concentration Extraits de Parfum and intense Arabian Oud blends built to last in tropical humidity.",
-    url: siteUrl,
-    siteName: "iwahh",
-    locale: "en_IN",
     type: "website",
-    images: [
-      {
-        url: "/og-image.jpg",
-        width: 1200,
-        height: 630,
-        alt: "iwahh Luxury Fragrance Collection",
-      },
-    ],
+    locale: SITE.locale,
+    siteName: SITE.name,
+    url: "/",
+    title: `${SITE.name} | Small-batch perfume, delivered across India`,
+    description: SITE.description,
   },
-
   twitter: {
     card: "summary_large_image",
-    title: "iwahh | Luxury Niche & Arabic Perfumes",
-    description:
-      "Handcrafted Extraits de Parfum and Arabian Oud blends designed for high performance in humid tropical weather.",
-    images: ["/og-image.jpg"],
+    title: `${SITE.name} | Small-batch perfume, delivered across India`,
+    description: SITE.description,
   },
-
   robots: {
     index: true,
     follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-    },
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 },
   },
+  verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
+    : undefined,
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "PerfumeStore",
-    "name": "iwahh",
-    "url": siteUrl,
-    "logo": `${siteUrl}/logo.png`,
-    "description": "iwahh is a luxury niche perfume house based in Kerala, India. We specialize in high-concentration Extraits de Parfum, Arabian Oud, and rich attars engineered for extreme longevity in humid weather.",
-    "address": {
-      "@type": "PostalAddress",
-      "addressRegion": "Kerala",
-      "addressCountry": "IN"
-    },
-    "priceRange": "₹₹₹",
-    "currenciesAccepted": "INR",
-    "knowsAbout": [
-      "Niche Perfumes",
-      "Arabic Perfumes",
-      "Dehn Al Oud",
-      "Extrait de Parfum",
-      "Attars",
-      "Tropical Climate Fragrances",
-      "iwahh"
-    ]
-  };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#070303",
+  colorScheme: "dark",
+};
 
+/* Tells Google who you are (name, logo, site) */
+const siteJsonLd = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": `${SITE.url}/#organization`,
+    name: SITE.name,
+    legalName: SITE.legalName,
+    url: SITE.url,
+    logo: `${SITE.url}/opengraph-image`,
+    description: SITE.description,
+    areaServed: "IN",
+    ...(SITE.email ? { email: SITE.email } : {}),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${SITE.url}/#website`,
+    url: SITE.url,
+    name: SITE.name,
+    inLanguage: "en-IN",
+    publisher: { "@id": `${SITE.url}/#organization` },
+  },
+];
+
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${serif.variable} ${sans.variable}`}>
-      <head>
+    <html lang="en-IN" className={`${serif.variable} ${sans.variable}`}>
+      <body className="bg-[#070303] antialiased">
+        {children}
+
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd).replace(/</g, "\\u003c") }}
         />
-      </head>
-      <body className="bg-[#0a0d0a] text-slate-100 antialiased selection:bg-amber-500/20 selection:text-amber-200">
-        {children}
+
+        {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || []; function gtag(){window.dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}', { send_page_view: false });`}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   );

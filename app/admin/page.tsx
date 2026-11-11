@@ -21,12 +21,12 @@ import { Trash2, Edit3, X, Plus, Save, Package, UploadCloud, Loader2, Check, Pho
 /* ------------------------------------------------------------------ */
 
 const IMGBB_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY;
-const MAX_IMAGE_MB = 32; 
+const MAX_IMAGE_MB = 32;
 const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
 const DEFAULT_WHATSAPP = "917994654204";
 const SETTINGS_COLLECTION = "settings";
 const SETTINGS_DOC = "store";
-const PRIMARY_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "samepc944@gmail.com").trim().toLowerCase();
+const PRIMARY_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_EMAIL)?.trim().toLowerCase();
 const SIZE_OPTIONS: number[] = [100, 200, 300];
 const ORDER_STATUSES = ["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled"] as const;
 
@@ -63,12 +63,25 @@ interface Order {
 const inr = (n: number) => `₹${(n ?? 0).toLocaleString("en-IN")}`;
 const isInStock = (p: Product) => p.inStock !== false;
 
+/* Detect phones / touch-only iPads where the Firebase popup gets blocked or
+   killed by the browser. Redirect is the reliable auth flow there. */
+const isMobileDevice = () => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
+    (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua))
+  );
+};
+
 const STYLES = `
 @import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,400&family=Jost:wght@300;400;500;600&display=swap');
 .ix-root {
   font-family: 'Jost', system-ui, sans-serif;
   --bg: #070303; --fg: #f7f2ee; --champagne: #e9cfa9;
   --glass: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.015));
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 .ix-root .font-serif { font-family: 'Bodoni Moda','Times New Roman',serif !important; font-weight: 400; }
 .ix-root ::selection { background:#720000; color:#fff; }
@@ -82,6 +95,7 @@ const STYLES = `
   transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s, opacity .3s;
 }
 .ix-root .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(179,18,42,.5), inset 0 1px 0 rgba(255,255,255,.3); }
+.ix-root .btn-primary:active:not(:disabled) { transform: translateY(0) scale(.98); }
 .ix-root .field {
   width: 100%; border-radius: .875rem; border: 1px solid rgba(255,255,255,.1);
   background: rgba(255,255,255,.05); padding: .65rem .9rem; font-size: 16px; color: #fff; outline: none;
@@ -92,6 +106,7 @@ const STYLES = `
 .ix-root .field:focus { border-color: #b3122a; background: rgba(255,255,255,.07); box-shadow: 0 0 0 3px rgba(179,18,42,.18); }
 .ix-root select option { background: #140606; color: #fff; }
 .ix-root :focus-visible { outline: 2px solid var(--champagne); outline-offset: 2px; }
+.ix-root button, .ix-root a, .ix-root label { touch-action: manipulation; }
 `;
 
 function Field({ label, hint, children, className = "" }: { label: string; hint?: string; children: ReactNode; className?: string }) {
@@ -139,7 +154,7 @@ function Toast({ toast }: { toast: { type: "ok" | "error"; text: string } | null
   return (
     <div
       role="status"
-      className={`glass fixed inset-x-3 bottom-4 z-50 mx-auto flex max-w-sm items-center gap-2.5 rounded-full px-4 py-3 text-sm ${
+      className={`glass fixed inset-x-3 bottom-[calc(1rem+env(safe-area-inset-bottom,0px))] z-50 mx-auto flex max-w-sm items-center gap-2.5 rounded-full px-4 py-3 text-sm ${
         toast.type === "ok" ? "text-emerald-300" : "text-[#ff8a8a]"
       }`}
     >
@@ -159,7 +174,7 @@ async function uploadToImgBB(file: File): Promise<string> {
   const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_KEY}`, { method: "POST", body });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.success) throw new Error(json?.error?.message || "Upload failed. Please try again.");
-  return json.data.url as string; 
+  return json.data.url as string;
 }
 
 function ImageUploader({ value, onChange, onError }: { value: string; onChange: (url: string) => void; onError: (msg: string) => void; }) {
@@ -198,11 +213,11 @@ function ImageUploader({ value, onChange, onError }: { value: string; onChange: 
           <div className="min-w-0 flex-1 space-y-2">
             <p className="truncate text-[11px] text-white/40">{value}</p>
             <div className="flex flex-wrap gap-2">
-              <label className="cursor-pointer rounded-full bg-white/10 px-3.5 py-1.5 text-xs text-white transition hover:bg-white/15">
+              <label className="flex min-h-[2.5rem] cursor-pointer items-center rounded-full bg-white/10 px-3.5 py-1.5 text-xs text-white transition hover:bg-white/15">
                 {uploading ? "Uploading…" : "Replace"}
                 <input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(e) => handleFile(e.target.files?.[0])} />
               </label>
-              <button type="button" onClick={() => onChange("")} className="rounded-full bg-red-500/10 px-3.5 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20">
+              <button type="button" onClick={() => onChange("")} className="min-h-[2.5rem] rounded-full bg-red-500/10 px-3.5 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20">
                 Remove
               </button>
             </div>
@@ -235,7 +250,7 @@ function ImageUploader({ value, onChange, onError }: { value: string; onChange: 
           <input type="file" accept="image/*" className="sr-only" disabled={uploading} onChange={(e) => handleFile(e.target.files?.[0])} />
         </label>
       )}
-      <button type="button" onClick={() => setShowLink((s) => !s)} className="mt-2 flex items-center gap-1.5 pl-1 text-xs text-white/50 transition hover:text-white">
+      <button type="button" onClick={() => setShowLink((s) => !s)} className="mt-2 flex min-h-[2rem] items-center gap-1.5 pl-1 text-xs text-white/50 transition hover:text-white">
         <Link2 size={13} /> {showLink ? "Hide link option" : "Or paste an image link"}
       </button>
       {showLink && (
@@ -354,8 +369,8 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
 
   return (
     <div className="space-y-5">
-      <div ref={formRef} className="scroll-mt-20">
-        <Card title={editingId ? "Edit product" : "Add a product"} right={editingId && <button type="button" onClick={resetForm} className="flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/15"><X size={13} /> Cancel</button>}>
+      <div ref={formRef} className="scroll-mt-24">
+        <Card title={editingId ? "Edit product" : "Add a product"} right={editingId && <button type="button" onClick={resetForm} className="flex min-h-[2rem] shrink-0 items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/80 hover:bg-white/15"><X size={13} /> Cancel</button>}>
           <form onSubmit={handleSubmit} className="space-y-4">
             <ImageUploader value={form.image} onChange={(v) => setField("image", v)} onError={(m) => notify("error", m)} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -383,14 +398,14 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
               <Field label="Type"><input value={form.concentration} onChange={(e) => setField("concentration", e.target.value)} placeholder="Eau de Parfum" className="field" /></Field>
               <Field label="Short description"><input value={form.description} onChange={(e) => setField("description", e.target.value)} placeholder="One or two lines" className="field" /></Field>
             </div>
-            <div className="flex items-center justify-between rounded-2xl bg-white/[0.04] px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.04] px-4 py-3">
               <div>
                 <p className="text-sm text-white">{form.inStock ? "In stock" : "Out of stock"}</p>
                 <p className="text-[11px] text-white/40">Out of stock products show on the shop but cannot be added to the bag.</p>
               </div>
               <Switch on={form.inStock} onChange={() => setField("inStock", !form.inStock)} label="In stock" />
             </div>
-            <button type="submit" disabled={saving} className="btn-primary flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-medium text-white disabled:opacity-60">
+            <button type="submit" disabled={saving} className="btn-primary flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-medium text-white disabled:opacity-60">
               {saving ? <Loader2 size={15} className="animate-spin" /> : editingId ? <Save size={15} /> : <Plus size={15} />}
               {saving ? "Saving…" : editingId ? "Save changes" : "Add product"}
             </button>
@@ -401,7 +416,7 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
       <Card title={`Products (${products.length})`} desc="Switch a product to out of stock when it sells out.">
         <div className="mb-4 flex flex-wrap gap-2">
           {([["all", `All (${products.length})`], ["in", `In stock (${products.length - outCount})`], ["out", `Out of stock (${outCount})`]] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setFilter(key)} aria-pressed={filter === key} className={`rounded-full px-3.5 py-1.5 text-xs transition ${filter === key ? "bg-gradient-to-br from-[#a3081c] to-[#720000] text-white" : "bg-white/5 text-white/60 hover:text-white"}`}>{label}</button>
+            <button key={key} onClick={() => setFilter(key)} aria-pressed={filter === key} className={`min-h-[2.25rem] rounded-full px-3.5 py-1.5 text-xs transition ${filter === key ? "bg-gradient-to-br from-[#a3081c] to-[#720000] text-white" : "bg-white/5 text-white/60 hover:text-white"}`}>{label}</button>
           ))}
         </div>
         {loading ? (
@@ -427,13 +442,13 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 sm:border-0 sm:pt-0">
-                    <label className="flex items-center gap-2 text-xs text-white/60">
+                    <label className="flex min-h-[2.5rem] items-center gap-2 text-xs text-white/60">
                       <Switch on={inStock} onChange={() => toggleStock(p)} label={`${p.name} in stock`} />
                       <span>{inStock ? "In stock" : "Out"}</span>
                     </label>
                     <div className="flex gap-2">
-                      <button onClick={() => startEdit(p)} aria-label={`Edit ${p.name}`} className="flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-xs text-white transition hover:bg-white/15"><Edit3 size={13} /> Edit</button>
-                      <button onClick={() => handleDelete(p)} aria-label={`Delete ${p.name}`} className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500/10 text-red-300 transition hover:bg-red-500/20"><Trash2 size={14} /></button>
+                      <button onClick={() => startEdit(p)} aria-label={`Edit ${p.name}`} className="flex min-h-[2.5rem] items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-xs text-white transition hover:bg-white/15"><Edit3 size={13} /> Edit</button>
+                      <button onClick={() => handleDelete(p)} aria-label={`Delete ${p.name}`} className="flex min-h-[2.5rem] w-10 items-center justify-center rounded-full bg-red-500/10 text-red-300 transition hover:bg-red-500/20"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 </li>
@@ -476,21 +491,17 @@ function AdminPermissionsManager({ notify, onPermissionsUpdated }: { notify: (ty
     const clean = newEmail.trim().toLowerCase();
     if (!clean || !clean.includes("@")) { notify("error", "Enter a valid Google email address."); return; }
     if (clean === PRIMARY_ADMIN || emails.includes(clean)) { notify("error", "This Google account already has permission."); return; }
-    
+
     const updated = [...emails, clean];
     setSaving(true);
     try {
-      // Save to Firebase
       await setDoc(doc(db, SETTINGS_COLLECTION, SETTINGS_DOC), { adminEmails: updated }, { merge: true });
-      
-      // Update local state ONLY if Firebase succeeded
       setEmails(updated);
       onPermissionsUpdated(updated);
       setNewEmail("");
       notify("ok", `Granted admin permission to ${clean}`);
     } catch (err: unknown) {
       console.error("Grant failed:", err);
-      // SHOW THE ACTUAL FIREBASE ERROR TO THE USER
       notify("error", err instanceof Error ? err.message : "Failed to update database. Check rules.");
     } finally {
       setSaving(false);
@@ -516,7 +527,7 @@ function AdminPermissionsManager({ notify, onPermissionsUpdated }: { notify: (ty
   return (
     <Card title="Admin permissions" desc="Grant permission to specific Google accounts. Only authorized accounts can log in and make edits.">
       <div className="space-y-4">
-        <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-3.5">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3.5">
           <div className="flex min-w-0 items-center gap-2.5">
             <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
             <div className="min-w-0">
@@ -531,7 +542,7 @@ function AdminPermissionsManager({ notify, onPermissionsUpdated }: { notify: (ty
             {emails.map((em) => (
               <li key={em} className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                 <span className="min-w-0 truncate font-mono text-xs text-white/90">{em}</span>
-                <button type="button" onClick={() => removeEmail(em)} disabled={saving} className="shrink-0 rounded-full bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-50">Revoke</button>
+                <button type="button" onClick={() => removeEmail(em)} disabled={saving} className="min-h-[2.25rem] shrink-0 rounded-full bg-red-500/10 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-500/20 disabled:opacity-50">Revoke</button>
               </li>
             ))}
           </ul>
@@ -539,8 +550,8 @@ function AdminPermissionsManager({ notify, onPermissionsUpdated }: { notify: (ty
         <form onSubmit={addEmail}>
           <Field label="Grant permission to a new Google account" hint="Enter their Google / Gmail address.">
             <div className="flex gap-2">
-              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="colleague@gmail.com" className="field flex-1" />
-              <button type="submit" disabled={saving || !newEmail.trim()} className="btn-primary flex shrink-0 items-center gap-1.5 rounded-full px-5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="colleague@gmail.com" className="field min-w-0 flex-1" />
+              <button type="submit" disabled={saving || !newEmail.trim()} className="btn-primary flex min-h-[2.75rem] shrink-0 items-center gap-1.5 rounded-full px-5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
                 {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={14} />} Grant
               </button>
             </div>
@@ -596,10 +607,10 @@ function WhatsAppSettings({ notify }: { notify: (type: "ok" | "error", text: str
           </div>
         </Field>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={save} disabled={saving || !valid || !changed} className="btn-primary flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={save} disabled={saving || !valid || !changed} className="btn-primary flex min-h-[2.75rem] items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save number
           </button>
-          <a href={`https://wa.me/${normalized}`} target="_blank" rel="noopener noreferrer" className={`rounded-full bg-white/10 px-4 py-2.5 text-sm text-white/80 transition hover:bg-white/15 ${valid ? "" : "pointer-events-none opacity-40"}`}>Test on WhatsApp</a>
+          <a href={`https://wa.me/${normalized}`} target="_blank" rel="noopener noreferrer" className={`flex min-h-[2.75rem] items-center rounded-full bg-white/10 px-4 py-2.5 text-sm text-white/80 transition hover:bg-white/15 ${valid ? "" : "pointer-events-none opacity-40"}`}>Test on WhatsApp</a>
         </div>
         <p className="text-[11px] text-white/35">Currently used: +{saved}</p>
       </div>
@@ -675,7 +686,7 @@ function OrdersManager({ notify, onPermissionsUpdated }: { notify: (type: "ok" |
                     </li>
                   ))}
                 </ul>
-                <label className="flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                <label className="flex min-h-[2.5rem] items-center justify-between gap-3 border-t border-white/10 pt-3">
                   <span className="text-white/50">Status</span>
                   <select value={o.status || "Pending"} onChange={(e) => setStatus(o.id, e.target.value)} className="field !w-auto !py-1.5 !text-xs">
                     {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -720,26 +731,26 @@ function AdminDashboard({ user, onSignOut, onPermissionsUpdated }: { user: User;
   }, [fetchInventory]);
 
   return (
-    <main className="ix-root relative min-h-screen bg-[var(--bg)] px-4 pb-24 pt-6 text-[var(--fg)] antialiased">
+    <main className="ix-root relative min-h-[100dvh] bg-[var(--bg)] px-4 pb-[max(6rem,env(safe-area-inset-bottom,0px))] pt-[max(1.5rem,env(safe-area-inset-top,0px))] text-[var(--fg)] antialiased">
       <style>{STYLES}</style>
       <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(179,18,42,0.2),transparent)]" />
 
       <div className="relative z-10 mx-auto max-w-2xl space-y-5">
         <header className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="font-serif text-xs italic text-[var(--champagne)]">IWAHH</p>
             <h1 className="font-serif text-2xl font-light text-white sm:text-3xl">Store admin</h1>
             <p className="max-w-[10rem] truncate text-[11px] text-white/40 sm:max-w-xs">{user.email}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <a href="/shop" target="_blank" rel="noopener noreferrer" className="rounded-full bg-white/10 px-4 py-2 text-xs text-white/80 transition hover:bg-white/15">View shop</a>
-            <button onClick={onSignOut} aria-label="Sign out" title="Sign out" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15 hover:text-white"><LogOut size={15} /></button>
+          <div className="flex shrink-0 items-center gap-2">
+            <a href="/shop" target="_blank" rel="noopener noreferrer" className="flex min-h-[2.5rem] items-center rounded-full bg-white/10 px-4 py-2 text-xs text-white/80 transition hover:bg-white/15">View shop</a>
+            <button onClick={onSignOut} aria-label="Sign out" title="Sign out" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/15 hover:text-white"><LogOut size={15} /></button>
           </div>
         </header>
 
         <nav className="glass sticky top-3 z-20 grid grid-cols-2 gap-1 rounded-full p-1 backdrop-blur-xl" aria-label="Sections">
           {([["products", "Products"], ["orders", "Orders"]] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? "page" : undefined} className={`rounded-full py-2.5 text-sm transition ${tab === key ? "bg-gradient-to-br from-[#a3081c] to-[#720000] font-medium text-white shadow-[0_6px_18px_rgba(114,0,0,0.5)]" : "text-white/55 hover:text-white"}`}>{label}</button>
+            <button key={key} onClick={() => setTab(key)} aria-current={tab === key ? "page" : undefined} className={`min-h-[2.75rem] rounded-full py-2.5 text-sm transition ${tab === key ? "bg-gradient-to-br from-[#a3081c] to-[#720000] font-medium text-white shadow-[0_6px_18px_rgba(114,0,0,0.5)]" : "text-white/55 hover:text-white"}`}>{label}</button>
           ))}
         </nav>
 
@@ -765,10 +776,10 @@ function GoogleG() {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <main className="ix-root relative flex min-h-screen items-center justify-center bg-[var(--bg)] px-4 py-16 text-[var(--fg)] antialiased">
+    <main className="ix-root relative flex min-h-[100dvh] items-center justify-center bg-[var(--bg)] px-4 py-10 text-[var(--fg)] antialiased sm:py-16">
       <style>{STYLES}</style>
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(179,18,42,0.22),transparent)]" />
-      <div className="glass relative w-full max-w-xs space-y-5 rounded-[1.5rem] p-6 text-center">{children}</div>
+      <div className="glass relative w-full max-w-xs space-y-5 rounded-[1.5rem] p-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] text-center">{children}</div>
     </main>
   );
 }
@@ -795,19 +806,31 @@ export default function AdminPage() {
   useEffect(() => {
     let mounted = true;
 
-    getRedirectResult(auth).catch((err: unknown) => {
-      console.error("Redirect auth error:", err);
-    });
+    // Surface redirect-flow failures (blocked popups fall through to here,
+    // Safari private mode storage errors, unauthorized domains, etc.)
+    getRedirectResult(auth)
+      .catch((err: unknown) => {
+        console.error("Redirect auth error:", err);
+        const code = (err as { code?: string })?.code;
+        if (code === "auth/unauthorized-domain") {
+          setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
+        } else if (code === "auth/web-storage-unsupported") {
+          setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
+        } else if (code) {
+          setError(`Sign in failed after redirect (${code}). Please try again."`);
+        }
+      });
 
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!mounted) return;
       setUser(u);
-      
+
       if (u) {
-        // Fetch latest permissions on login
+        // Fetch latest permissions on login BEFORE showing the dashboard,
+        // so authorized users never flash "Access Denied" after redirect.
         await refreshPermissions();
       }
-      
+
       if (mounted) setChecking(false);
     });
 
@@ -825,19 +848,49 @@ export default function AdminPage() {
     setBusy(true);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
+
+    // On phones the Firebase popup is blocked or killed by the browser
+    // (iOS Safari / Chrome on Android). Redirect is the reliable flow there.
+    if (isMobileDevice()) {
+      try {
+        await signInWithRedirect(auth, provider); // page navigates away
+        return;
+      } catch (e) {
+        console.error(e);
+        const code = (e as { code?: string })?.code;
+        if (code === "auth/unauthorized-domain") {
+          setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
+        } else if (code === "auth/web-storage-unsupported") {
+          setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
+        } else {
+          setError("Could not start sign in. Check your connection, disable any ad/content blockers, and try again.");
+        }
+        setBusy(false);
+        return;
+      }
+    }
+
     try {
       await signInWithPopup(auth, provider);
     } catch (e) {
-      const code = (e as { code?: string })?.code;
+      const err = e as { code?: string };
+      const code = err?.code;
       if (code === "auth/popup-blocked") {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-      if (code === "auth/unauthorized-domain") {
+        // Popup blocked on desktop: silently continue with the redirect flow.
+        try {
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (e2) {
+          console.error(e2);
+          setError("Could not start sign in. Please try again.");
+        }
+      } else if (code === "auth/unauthorized-domain") {
         setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
+      } else if (code === "auth/web-storage-unsupported") {
+        setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
       } else if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
         console.error(e);
-        setError("Sign in failed. Please try again.");
+        setError(`Sign in failed (${code || "unknown error"}). Please try again.`);
       }
     } finally {
       setBusy(false);
@@ -871,13 +924,13 @@ export default function AdminPage() {
         <button
           onClick={handleSignIn}
           disabled={busy}
-          className="flex w-full items-center justify-center gap-3 rounded-full bg-white py-3.5 text-xs font-medium uppercase tracking-wider text-[#1f1f1f] shadow-[0_4px_20px_rgba(255,255,255,0.15)] transition-all hover:bg-white/90 disabled:opacity-60"
+          className="flex min-h-[3rem] w-full items-center justify-center gap-3 rounded-full bg-white py-3.5 text-xs font-medium uppercase tracking-wider text-[#1f1f1f] shadow-[0_4px_20px_rgba(255,255,255,0.15)] transition-all hover:bg-white/90 active:scale-[.98] disabled:opacity-60"
         >
           {busy ? <Loader2 size={16} className="animate-spin text-[#1f1f1f]" /> : <GoogleG />}
-          Continue with Google
+          {busy ? "Connecting…" : "Continue with Google"}
         </button>
         {error && (
-          <p role="alert" className="rounded-xl border border-[#720000]/50 bg-[#720000]/30 px-3.5 py-2.5 text-xs text-[#ffaaaa]">
+          <p role="alert" className="rounded-xl border border-[#720000]/50 bg-[#720000]/30 px-3.5 py-2.5 text-left text-xs leading-relaxed text-[#ffaaaa]">
             {error}
           </p>
         )}
@@ -899,11 +952,11 @@ export default function AdminPage() {
           </p>
           <p className="mt-2 text-[11px] text-white/40">Please ask the store owner to grant permission to this email address.</p>
         </div>
-        <div className="flex flex-col gap-2">
-          <button onClick={refreshPermissions} className="flex w-full items-center justify-center gap-2 rounded-full bg-white/10 py-3 text-xs font-medium uppercase tracking-wider text-white hover:bg-white/20">
-            <RefreshCw size={14} /> I've been granted access. Refresh.
+        <div className="flex flex-col gap-2.5">
+          <button onClick={refreshPermissions} className="flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-full bg-white/10 py-3 text-xs font-medium uppercase tracking-wider text-white hover:bg-white/20 active:scale-[.98]">
+            <RefreshCw size={14} /> I&apos;ve been granted access. Refresh.
           </button>
-          <button onClick={handleSignOut} className="btn-primary flex w-full items-center justify-center gap-2 rounded-full py-3 text-xs font-medium uppercase tracking-wider text-white">
+          <button onClick={handleSignOut} className="btn-primary flex min-h-[3rem] w-full items-center justify-center gap-2 rounded-full py-3 text-xs font-medium uppercase tracking-wider text-white active:scale-[.98]">
             <LogOut size={14} /> Sign out &amp; switch account
           </button>
         </div>
