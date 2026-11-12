@@ -24,6 +24,15 @@ export const metadata: Metadata = {
   publisher: SITE.legalName,
   category: "beauty",
   formatDetection: { telephone: false, email: false, address: false },
+  icons: {
+    icon: [
+      { url: "/icon.png", type: "image/png", sizes: "96x96" }, // Must be a square PNG/ICO >= 48x48px for Google Search
+    ],
+    shortcut: "/icon.png",
+    apple: [
+      { url: "/icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
   openGraph: {
     type: "website",
     locale: SITE.locale,
@@ -63,7 +72,7 @@ const siteJsonLd = [
     name: SITE.name,
     legalName: SITE.legalName,
     url: SITE.url,
-    logo: `${SITE.url}/opengraph-image`,
+    logo: `${SITE.url}/icon.png`,
     description: SITE.description,
     areaServed: "IN",
     ...(SITE.email ? { email: SITE.email } : {}),

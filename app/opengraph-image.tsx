@@ -27,7 +27,7 @@ export default function OpengraphImage() {
         <div style={{ fontSize: 190, letterSpacing: 28, lineHeight: 1, display: "flex" }}>IWAHH</div>
         <div style={{ width: 160, height: 2, background: "#b3122a", margin: "36px 0", display: "flex" }} />
         <div style={{ fontSize: 34, color: "rgba(247,242,238,0.7)", display: "flex" }}>
-          Distilled in Grasse. Delivered across India.
+          The most addictive fragrance was never meant for a bottle.
         </div>
       </div>
     ),

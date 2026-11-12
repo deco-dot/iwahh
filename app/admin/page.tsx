@@ -63,8 +63,9 @@ interface Order {
 const inr = (n: number) => `₹${(n ?? 0).toLocaleString("en-IN")}`;
 const isInStock = (p: Product) => p.inStock !== false;
 
-/* Detect phones / touch-only iPads where the Firebase popup gets blocked or
-   killed by the browser. Redirect is the reliable auth flow there. */
+/* Detect phones / touch-only iPads where the Firebase popup may get blocked
+   or killed by the browser. Popup is tried first everywhere; this only decides
+   whether a popup failure falls back to the redirect flow. */
 const isMobileDevice = () => {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
@@ -72,6 +73,19 @@ const isMobileDevice = () => {
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
     (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua))
   );
+};
+
+/* Centralized friendly messages for every Firebase auth error code. */
+const friendlyAuthError = (code?: string) => {
+  if (code === "auth/unauthorized-domain")
+    return "This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.";
+  if (code === "auth/web-storage-unsupported")
+    return "Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.";
+  if (code === "auth/network-request-failed")
+    return "Network error. Check your connection and try again.";
+  if (code === "auth/popup-blocked")
+    return "The sign-in popup was blocked. Allow popups for this site and try again.";
+  return `Sign in failed (${code || "unknown error"}). Please try again.`;
 };
 
 const STYLES = `
@@ -812,13 +826,7 @@ export default function AdminPage() {
       .catch((err: unknown) => {
         console.error("Redirect auth error:", err);
         const code = (err as { code?: string })?.code;
-        if (code === "auth/unauthorized-domain") {
-          setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
-        } else if (code === "auth/web-storage-unsupported") {
-          setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
-        } else if (code) {
-          setError(`Sign in failed after redirect (${code}). Please try again."`);
-        }
+        if (code) setError(friendlyAuthError(code));
       });
 
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -849,50 +857,38 @@ export default function AdminPage() {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
 
-    // On phones the Firebase popup is blocked or killed by the browser
-    // (iOS Safari / Chrome on Android). Redirect is the reliable flow there.
-    if (isMobileDevice()) {
-      try {
-        await signInWithRedirect(auth, provider); // page navigates away
-        return;
-      } catch (e) {
-        console.error(e);
-        const code = (e as { code?: string })?.code;
-        if (code === "auth/unauthorized-domain") {
-          setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
-        } else if (code === "auth/web-storage-unsupported") {
-          setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
-        } else {
-          setError("Could not start sign in. Check your connection, disable any ad/content blockers, and try again.");
-        }
+    // 1) Popup first — reliable on iOS Safari, Android Chrome, and desktop.
+    try {
+      await signInWithPopup(auth, provider);
+      return; // onAuthStateChanged takes over from here
+    } catch (e) {
+      const code = (e as { code?: string })?.code;
+
+      // User closed the popup themselves — don't fall through to redirect.
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         setBusy(false);
         return;
       }
-    }
 
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (e) {
-      const err = e as { code?: string };
-      const code = err?.code;
-      if (code === "auth/popup-blocked") {
-        // Popup blocked on desktop: silently continue with the redirect flow.
-        try {
-          await signInWithRedirect(auth, provider);
-          return;
-        } catch (e2) {
-          console.error(e2);
-          setError("Could not start sign in. Please try again.");
-        }
-      } else if (code === "auth/unauthorized-domain") {
-        setError("This domain is not allowed yet. Add it in Firebase Console -> Authentication -> Settings -> Authorized domains.");
-      } else if (code === "auth/web-storage-unsupported") {
-        setError("Your browser is blocking storage needed for sign in. Turn off private browsing / tracking protection and try again.");
-      } else if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
-        console.error(e);
-        setError(`Sign in failed (${code || "unknown error"}). Please try again.`);
+      const popupImpossible =
+        code === "auth/popup-blocked" ||
+        code === "auth/operation-not-supported-in-this-environment" ||
+        isMobileDevice(); // some in-app WebViews kill popups
+
+      if (!popupImpossible) {
+        setError(friendlyAuthError(code));
+        setBusy(false);
+        return;
       }
-    } finally {
+
+      // 2) Last resort: redirect flow (page navigates away).
+      try {
+        await signInWithRedirect(auth, provider);
+        return;
+      } catch (e2) {
+        console.error(e2);
+        setError(friendlyAuthError((e2 as { code?: string })?.code));
+      }
       setBusy(false);
     }
   };
