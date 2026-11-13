@@ -1,3 +1,4 @@
+// lib/guest.ts — anonymous guest identity for the storefront
 export function getOrCreateGuestId(): string {
   if (typeof window === "undefined") return "";
   let guestId = localStorage.getItem("iwahh_guest_id");

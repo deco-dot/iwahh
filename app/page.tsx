@@ -714,7 +714,7 @@ export default function HomePage() {
         </section>
 
         {/* ── CURATED RESERVES ────────────────────────────────────────────── */}
-        <section aria-labelledby="reserves-title" className="relative z-10 w-full bg-gradient-to-b from-[#070303] via-[#0d0404] to-[#070303] px-4 py-16 md:px-10 md:py-24">
+        <section aria-labelledby="reserves-title" className="relative z-10 w-full bg-gradient-to-b from-[#070303] via-[#0d0404] to-[#070303] px-4 py-16 md:px-10 md:py-24 ">
           <div className="mx-auto max-w-[1160px]">
             <div className="cinematic-text mb-10 text-center md:mb-14">
               <p className="font-serif text-sm italic text-[var(--champagne)] md:text-base">Curated reserves</p>
