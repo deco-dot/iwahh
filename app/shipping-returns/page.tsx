@@ -21,7 +21,7 @@ export default function ShippingReturnsPage() {
       <Section n={2} title="Delivery time">
         <UL
           items={[
-            "Orders are usually packed and dispatched within 1 to 2 business days after we confirm your order and receive payment.",
+            "Orders are usually packed and dispatched within 1 to 5 business days after we confirm your order and receive payment.",
             "Delivery then takes about 3 to 5 business days. Remote areas can take a little longer.",
             "Once your parcel is on its way, we send you the tracking details on WhatsApp.",
             "Delays can happen because of weather, festivals, strikes or courier issues. We will keep you updated.",

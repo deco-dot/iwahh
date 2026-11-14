@@ -6,7 +6,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Minus, Plus, Truck, ShoppingBag, Check } from "lucide-react";
 import { useProducts, useCart } from "@/app/lib/useStore";
-import { FALLBACK_IMG, fromPrice, hasSizes, inr, isInStock, sizesOf } from "@/app/lib/store";
+import { FALLBACK_IMG, fromPrice, fromMrp, discountPct, hasSizes, inr, isInStock, sizesOf } from "@/app/lib/store";
 import BagDrawer from "@/app/components/BagDrawer";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -106,6 +106,9 @@ export default function ProductClient({ params }: PageProps) {
   const sizes = sizesOf(product);
   const activeSize = sizes.find((s) => s.ml === selectedMl) ?? sizes[0];
   const price = activeSize ? activeSize.price : product.price;
+  const mrp = activeSize ? activeSize.mrp : product.mrp ?? undefined;
+  const onOffer = !!mrp && mrp > price;
+  const offPct = onOffer ? discountPct(price, mrp) : 0;
   const inStock = isInStock(product);
   const total = price * quantity;
 
@@ -162,9 +165,7 @@ export default function ProductClient({ params }: PageProps) {
       {/* Hero band */}
       <motion.section initial="hidden" animate="visible" variants={staggerContainer} className="relative z-10 px-3 pt-[4.5rem] md:px-6 md:pt-24">
         <div className="relative mx-auto max-w-[1240px] overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-[#000000] via-[#360d0d] to-[#0b0303] md:rounded-[2.5rem]">
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-full lg:w-[58%]">
-          
-          </div>
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-full lg:w-[58%]"></div>
           <div className="pointer-events-none absolute left-[12%] top-[20%] h-64 w-64 rounded-full bg-[#b3122a]/25 blur-[100px]" />
 
           <div className="relative grid grid-cols-1 items-center gap-2 px-5 pb-8 pt-6 md:px-10 md:py-14 lg:grid-cols-2 lg:gap-10">
@@ -186,6 +187,11 @@ export default function ProductClient({ params }: PageProps) {
                     Out of stock
                   </span>
                 )}
+                {inStock && onOffer && (
+                  <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-emerald-500/20 px-4 py-1.5 text-xs font-medium text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur">
+                    {offPct}% off
+                  </span>
+                )}
               </div>
             </motion.div>
 
@@ -201,9 +207,11 @@ export default function ProductClient({ params }: PageProps) {
               </div>
 
               <h1 className="mt-2 font-serif text-3xl font-light text-white sm:text-5xl">{product.name}</h1>
-              <p className="mt-1.5 font-serif text-2xl font-light text-[var(--champagne)]">
+              <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 font-serif text-2xl font-light text-[var(--champagne)]">
                 {inr(price)}
-                {activeSize && <span className="ml-2 font-sans text-sm text-white/40">{activeSize.ml} ml</span>}
+                {onOffer && <span className="font-sans text-base text-white/35 line-through decoration-white/50">{inr(mrp!)}</span>}
+                {onOffer && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-sans text-[11px] text-emerald-300">{offPct}% off</span>}
+                {activeSize && <span className="font-sans text-sm text-white/40">{activeSize.ml} ml</span>}
               </p>
 
               <div className="mt-3 max-w-md">
@@ -251,7 +259,10 @@ export default function ProductClient({ params }: PageProps) {
                           }`}
                         >
                           <span className="text-sm font-medium">{s.ml} ml</span>
-                          <span className="text-[11px] opacity-75">{inr(s.price)}</span>
+                          <span className="text-[11px] opacity-75">
+                            {inr(s.price)}
+                            {s.mrp && s.mrp > s.price && <span className="ml-1 line-through opacity-60">{inr(s.mrp)}</span>}
+                          </span>
                         </button>
                       );
                     })}
@@ -317,6 +328,7 @@ export default function ProductClient({ params }: PageProps) {
           <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:grid md:grid-cols-4 md:gap-6 md:overflow-visible md:px-0">
             {related.map((p) => {
               const ok = isInStock(p);
+              const pMrp = fromMrp(p);
               return (
                 <Link key={p.id} href={`/product/${p.id}`} className="group flex w-40 shrink-0 snap-start flex-col items-center text-center md:w-auto">
                   <div className="relative h-44 w-full overflow-hidden rounded-[1.5rem] bg-white/[0.05] shadow-[0_20px_50px_rgba(0,0,0,0.45)] transition-all duration-500 group-hover:-translate-y-1 group-hover:bg-white/[0.09] sm:h-52">
@@ -333,9 +345,10 @@ export default function ProductClient({ params }: PageProps) {
                     )}
                   </div>
                   <h3 className="mt-3 text-sm font-medium text-white">{p.name}</h3>
-                  <span className="mt-0.5 text-xs text-white/50">
+                  <span className="mt-0.5 flex flex-wrap items-baseline justify-center gap-x-1.5 text-xs text-white/50">
                     {hasSizes(p) ? "From " : ""}
                     {inr(fromPrice(p))}
+                    {pMrp && <span className="text-white/30 line-through">{inr(pMrp)}</span>}
                   </span>
                 </Link>
               );
@@ -368,7 +381,10 @@ export default function ProductClient({ params }: PageProps) {
             {activeSize ? `, ${activeSize.ml} ml` : ""}
             {quantity > 1 ? ` x${quantity}` : ""}
           </p>
-          <p className="font-mono text-sm text-[var(--champagne)]">{inr(total)}</p>
+          <p className="font-mono text-sm text-[var(--champagne)]">
+            {inr(total)}
+            {onOffer && <span className="ml-2 text-[11px] text-white/35 line-through">{inr(mrp! * quantity)}</span>}
+          </p>
         </div>
         <button
           type="button"

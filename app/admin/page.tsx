@@ -16,10 +16,6 @@ import {
 } from "firebase/auth";
 import { Trash2, Edit3, X, Plus, Save, Package, UploadCloud, Loader2, Check, Phone, Link2, LogOut, ShieldAlert, RefreshCw } from "lucide-react";
 
-/* ------------------------------------------------------------------ */
-/*  Settings                                                           */
-/* ------------------------------------------------------------------ */
-
 const IMGBB_KEY = process.env.NEXT_PUBLIC_IMGBB_API_KEY;
 const MAX_IMAGE_MB = 32;
 const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
@@ -30,19 +26,28 @@ const PRIMARY_ADMIN = (process.env.NEXT_PUBLIC_ADMIN_EMAIL)?.trim().toLowerCase(
 const SIZE_OPTIONS: number[] = [100, 200, 300];
 const ORDER_STATUSES = ["Pending", "Confirmed", "Shipped", "Delivered", "Cancelled"] as const;
 
+interface ProductSize {
+  ml: number;
+  price: number;
+  mrp?: number;
+}
+
 interface Product {
   id: string;
   name: string;
   category: string;
   price: number;
+  mrp?: number | null;
   image: string;
   notes: string[];
   tag?: string;
   concentration?: string;
   description?: string;
   inStock?: boolean;
-  sizes?: { ml: number; price: number }[];
+  sizes?: ProductSize[];
 }
+
+type SizeRow = { ml: number; on: boolean; price: string; mrp: string; custom?: boolean };
 
 interface OrderItem {
   id: string;
@@ -278,13 +283,14 @@ const EMPTY_FORM = {
   name: "",
   category: MOOD_FAMILIES[0]?.name || "Woody",
   price: "",
+  mrp: "",
   image: "",
   notes: "",
   tag: "",
   concentration: "Eau de Parfum",
   description: "",
   inStock: true,
-  sizes: SIZE_OPTIONS.map((ml) => ({ ml, on: true, price: "" })),
+  sizes: SIZE_OPTIONS.map((ml) => ({ ml, on: true, price: "", mrp: "" })) as SizeRow[],
 };
 
 function ProductsManager({ products, loading, refresh, notify }: { products: Product[]; loading: boolean; refresh: () => void; notify: (type: "ok" | "error", text: string) => void; }) {
@@ -292,42 +298,94 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<"all" | "in" | "out">("all");
+  const [customMl, setCustomMl] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
 
   const setField = <K extends keyof typeof EMPTY_FORM>(k: K, v: (typeof EMPTY_FORM)[K]) => setForm((f) => ({ ...f, [k]: v }));
-  const resetForm = () => { setForm(EMPTY_FORM); setEditingId(null); };
-  const setSizeRow = (i: number, patch: Partial<{ on: boolean; price: string }>) => setForm((f) => ({ ...f, sizes: f.sizes.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+  const resetForm = () => { setForm(EMPTY_FORM); setEditingId(null); setCustomMl(""); };
+
+  const setSizeRow = (i: number, patch: Partial<SizeRow>) =>
+    setForm((f) => ({ ...f, sizes: f.sizes.map((r, j) => (j === i ? { ...r, ...patch } : r)) }));
+
+  const addCustomSize = () => {
+    const ml = Math.round(Number(customMl));
+    if (!ml || ml <= 0 || ml > 5000) { notify("error", "Enter a valid size in ml."); return; }
+    if (form.sizes.some((r) => r.ml === ml)) { notify("error", `${ml} ml is already in the list.`); return; }
+    setForm((f) => ({
+      ...f,
+      sizes: [...f.sizes, { ml, on: true, price: "", mrp: "", custom: true }].sort((a, b) => a.ml - b.ml),
+    }));
+    setCustomMl("");
+  };
+
+  const removeSizeRow = (i: number) =>
+    setForm((f) => ({ ...f, sizes: f.sizes.filter((_, j) => j !== i) }));
 
   const startEdit = (p: Product) => {
     setEditingId(p.id);
+
+    const presetRows: SizeRow[] = SIZE_OPTIONS.map((ml) => {
+      const s = p.sizes?.find((x) => x.ml === ml);
+      return { ml, on: !!s, price: s ? String(s.price) : "", mrp: s?.mrp ? String(s.mrp) : "" };
+    });
+    const customRows: SizeRow[] = (p.sizes ?? [])
+      .filter((s) => !SIZE_OPTIONS.includes(s.ml))
+      .map((s) => ({ ml: s.ml, on: true, price: String(s.price), mrp: s.mrp ? String(s.mrp) : "", custom: true }));
+
     setForm({
       name: p.name,
       category: p.category || EMPTY_FORM.category,
       price: String(p.price ?? ""),
+      mrp: p.mrp ? String(p.mrp) : "",
       image: p.image || "",
       notes: p.notes ? p.notes.join(", ") : "",
       tag: p.tag || "",
       concentration: p.concentration || "",
       description: p.description || "",
       inStock: isInStock(p),
-      sizes: SIZE_OPTIONS.map((ml) => {
-        const s = p.sizes?.find((x) => x.ml === ml);
-        return { ml, on: !!s, price: s ? String(s.price) : "" };
-      }),
+      sizes: [...presetRows, ...customRows].sort((a, b) => a.ml - b.ml),
     });
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const sizes = form.sizes.filter((r) => r.on && Number(r.price) > 0).map((r) => ({ ml: r.ml, price: Number(r.price) }));
-    if (sizes.length === 0 && !(Number(form.price) > 0)) { notify("error", "Turn on at least one size and enter its price, or enter a single price."); return; }
+
+    const sizes = form.sizes
+      .filter((r) => r.on && Number(r.price) > 0)
+      .map((r) => ({
+        ml: r.ml,
+        price: Number(r.price),
+        ...(Number(r.mrp) > Number(r.price) ? { mrp: Number(r.mrp) } : {}),
+      }))
+      .sort((a, b) => a.ml - b.ml);
+
+    if (sizes.length === 0 && !(Number(form.price) > 0)) {
+      notify("error", "Turn on at least one size and enter its price, or enter a single price.");
+      return;
+    }
+
+    const badOffer =
+      form.sizes.some((r) => r.on && r.mrp && Number(r.mrp) <= Number(r.price)) ||
+      (sizes.length === 0 && form.mrp && Number(form.mrp) <= Number(form.price));
+    if (badOffer) {
+      notify("error", "The original price must be higher than the offer price.");
+      return;
+    }
+
+    const cheapest = sizes.length ? sizes.reduce((a, b) => (b.price < a.price ? b : a)) : null;
+
     setSaving(true);
     try {
       const data = {
         name: form.name.trim(),
         category: form.category,
-        price: sizes.length ? Math.min(...sizes.map((s) => s.price)) : Number(form.price),
+        price: cheapest ? cheapest.price : Number(form.price),
+        mrp: cheapest
+          ? ((cheapest as { mrp?: number }).mrp ?? null)
+          : Number(form.mrp) > Number(form.price)
+          ? Number(form.mrp)
+          : null,
         sizes,
         image: form.image.trim(),
         notes: form.notes.split(",").map((n) => n.trim()).filter(Boolean),
@@ -389,24 +447,61 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
             <ImageUploader value={form.image} onChange={(v) => setField("image", v)} onError={(m) => notify("error", m)} />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Name"><input required value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="e.g. Santal Minuit" className="field" /></Field>
-              <Field label="Single price (₹)" hint="Only used when no size below is switched on."><input type="number" inputMode="numeric" min={0} required={!form.sizes.some((r) => r.on)} value={form.price} onChange={(e) => setField("price", e.target.value)} className="field" /></Field>
               <Field label="Scent family"><select value={form.category} onChange={(e) => setField("category", e.target.value)} className="field">{MOOD_FAMILIES.map((f: { name: string }) => <option key={f.name} value={f.name}>{f.name}</option>)}</select></Field>
+              <Field label="Single price (₹)" hint="Only used when no size below is switched on."><input type="number" inputMode="numeric" min={0} required={!form.sizes.some((r) => r.on)} value={form.price} onChange={(e) => setField("price", e.target.value)} className="field" /></Field>
+              <Field label="Original price (₹)" hint="Optional. Shown crossed out, e.g. 999 when price is 599."><input type="number" inputMode="numeric" min={0} value={form.mrp} onChange={(e) => setField("mrp", e.target.value)} className="field" /></Field>
               <Field label="Badge (optional)"><input value={form.tag} onChange={(e) => setField("tag", e.target.value)} placeholder="New, Bestseller" className="field" /></Field>
             </div>
+
             <div className="space-y-2">
               <p className="pl-1 text-xs text-white/60">Sizes and prices</p>
-              {form.sizes.map((r, i) => (
-                <div key={r.ml} className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-3">
-                  <Switch on={r.on} onChange={() => setSizeRow(i, { on: !r.on })} label={`Offer ${r.ml} ml`} />
-                  <span className="w-14 shrink-0 text-sm text-white">{r.ml} ml</span>
-                  <div className="relative flex-1">
-                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-white/40">₹</span>
-                    <input type="number" inputMode="numeric" min={1} required={r.on} disabled={!r.on} value={r.price} onChange={(e) => setSizeRow(i, { price: e.target.value })} placeholder="Price" className="field !pl-8 disabled:opacity-40" />
+              {form.sizes.map((r, i) => {
+                const off =
+                  Number(r.mrp) > Number(r.price) && Number(r.price) > 0
+                    ? Math.round((1 - Number(r.price) / Number(r.mrp)) * 100)
+                    : 0;
+                return (
+                  <div key={r.ml} className="space-y-2 rounded-2xl bg-white/[0.04] p-3">
+                    <div className="flex items-center gap-3">
+                      <Switch on={r.on} onChange={() => setSizeRow(i, { on: !r.on })} label={`Offer ${r.ml} ml`} />
+                      <span className="flex-1 text-sm text-white">
+                        {r.ml} ml {r.custom && <span className="ml-1 text-[10px] text-[var(--champagne)]">custom</span>}
+                      </span>
+                      {off > 0 && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">{off}% off</span>}
+                      {r.custom && (
+                        <button type="button" onClick={() => removeSizeRow(i)} aria-label={`Remove ${r.ml} ml`} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-300 hover:bg-red-500/20"><Trash2 size={13} /></button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-white/40">₹</span>
+                        <input type="number" inputMode="numeric" min={1} required={r.on} disabled={!r.on} value={r.price} onChange={(e) => setSizeRow(i, { price: e.target.value })} placeholder="Offer price" className="field !pl-8 disabled:opacity-40" />
+                      </div>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-white/40">₹</span>
+                        <input type="number" inputMode="numeric" min={1} disabled={!r.on} value={r.mrp} onChange={(e) => setSizeRow(i, { mrp: e.target.value })} placeholder="Original (optional)" className="field !pl-8 disabled:opacity-40" />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+
+              <div className="flex gap-2 pt-1">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={customMl}
+                  onChange={(e) => setCustomMl(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomSize(); } }}
+                  placeholder="Custom size in ml, e.g. 50"
+                  className="field min-w-0 flex-1"
+                />
+                <button type="button" onClick={addCustomSize} className="flex min-h-[2.75rem] shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-4 text-xs text-white hover:bg-white/15"><Plus size={14} /> Add size</button>
+              </div>
               <p className="pl-1 text-[11px] text-white/35">Customers see exactly the prices you set here. No delivery charge is added.</p>
             </div>
+
             <Field label="Notes" hint="Separate with commas"><input value={form.notes} onChange={(e) => setField("notes", e.target.value)} placeholder="Sandalwood, Iris, Soft musk" className="field" /></Field>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Type"><input value={form.concentration} onChange={(e) => setField("concentration", e.target.value)} placeholder="Eau de Parfum" className="field" /></Field>
@@ -452,7 +547,12 @@ function ProductsManager({ products, loading, refresh, notify }: { products: Pro
                         <h3 className="truncate font-serif text-base text-white">{p.name}</h3>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] ${inStock ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>{inStock ? "In stock" : "Out of stock"}</span>
                       </div>
-                      <p className="text-xs text-white/45">{p.category}, {p.sizes && p.sizes.length > 0 ? p.sizes.map((s) => `${s.ml} ml ${inr(s.price)}`).join(" · ") : inr(p.price)}</p>
+                      <p className="text-xs text-white/45">
+                        {p.category},{" "}
+                        {p.sizes && p.sizes.length > 0
+                          ? p.sizes.map((s) => `${s.ml} ml ${inr(s.price)}${s.mrp ? ` (was ${inr(s.mrp)})` : ""}`).join(" · ")
+                          : `${inr(p.price)}${p.mrp ? ` (was ${inr(p.mrp)})` : ""}`}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3 sm:border-0 sm:pt-0">
@@ -857,14 +957,14 @@ export default function AdminPage() {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
 
-    // 1) Popup first — reliable on iOS Safari, Android Chrome, and desktop.
+    // 1) Popup first: reliable on iOS Safari, Android Chrome, and desktop.
     try {
       await signInWithPopup(auth, provider);
       return; // onAuthStateChanged takes over from here
     } catch (e) {
       const code = (e as { code?: string })?.code;
 
-      // User closed the popup themselves — don't fall through to redirect.
+      // User closed the popup themselves: don't fall through to redirect.
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         setBusy(false);
         return;

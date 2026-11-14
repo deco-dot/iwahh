@@ -10,7 +10,7 @@ export const BUSINESS = {
   address: "[Business address, City, State, PIN code]",
   email: "[support@yourdomain.com]",
   phone: "[+91 XXXXX XXXXX]",
-  gstin: "[GSTIN, if registered]",
+  gstin: "",
   grievanceOfficer: "[Name of grievance officer]",
   courtCity: "[Your city]", // courts that handle disputes
   lastUpdated: "1 November 2026",

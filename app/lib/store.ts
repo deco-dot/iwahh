@@ -3,14 +3,15 @@
 
 export const FALLBACK_IMG = "https://iili.io/nwL32Fn.png";
 
-/* Bottle sizes the admin can offer */
+/* Quick-add presets in admin. Custom sizes can be any ml value. */
 export const SIZE_OPTIONS: number[] = [100, 200, 300];
 
 export const inr = (n: number) => `₹${(n ?? 0).toLocaleString("en-IN")}`;
 
 export interface SizeOption {
   ml: number;
-  price: number;
+  price: number; // offer / selling price
+  mrp?: number; // original price, shown crossed out
 }
 
 export interface StoreProduct {
@@ -18,13 +19,14 @@ export interface StoreProduct {
   name: string;
   category: string;
   price: number; // single price, or the lowest size price
+  mrp?: number | null; // original price for single-price products
   image: string;
   notes: string[];
   tag?: string;
   concentration?: string;
   description?: string;
   inStock?: boolean; // missing = in stock
-  sizes?: SizeOption[]; // 100 / 200 / 300 ml, each with its own price
+  sizes?: SizeOption[]; // any ml value, each with its own price
 }
 
 export interface CartLine {
@@ -50,6 +52,18 @@ export const fromPrice = (p: StoreProduct) => {
 };
 
 export const priceFor = (p: StoreProduct, ml?: number) => sizesOf(p).find((s) => s.ml === ml)?.price ?? fromPrice(p);
+
+/* Original (crossed-out) price that goes with fromPrice(p), or undefined if no offer */
+export const fromMrp = (p: StoreProduct): number | undefined => {
+  const s = sizesOf(p);
+  const cheapest = s.length ? s.reduce((a, b) => (b.price < a.price ? b : a)) : null;
+  const price = cheapest ? cheapest.price : p.price;
+  const mrp = cheapest ? cheapest.mrp : p.mrp ?? undefined;
+  return mrp && mrp > price ? mrp : undefined;
+};
+
+export const discountPct = (price: number, mrp?: number) =>
+  mrp && mrp > price ? Math.round((1 - price / mrp) * 100) : 0;
 
 export const lineKey = (id: string, ml?: number) => (ml ? `${id}::${ml}` : id);
 

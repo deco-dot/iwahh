@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Search, ShoppingBag, SlidersHorizontal } from "lucide-react";
 import { MOOD_FAMILIES } from "@/app/lib/products";
 import { useProducts, useCart } from "@/app/lib/useStore";
-import { FALLBACK_IMG, fromPrice, hasSizes, inr, isInStock } from "@/app/lib/store";
+import { FALLBACK_IMG, fromPrice, fromMrp, discountPct, hasSizes, inr, isInStock } from "@/app/lib/store";
 import BagDrawer from "@/app/components/BagDrawer";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -263,6 +263,8 @@ export default function ShopPage() {
                 {filtered.map((p, i) => {
                   const inStock = isInStock(p);
                   const sized = hasSizes(p);
+                  const mrp = fromMrp(p);
+                  const off = discountPct(fromPrice(p), mrp);
                   return (
                     <motion.article
                       layout
@@ -299,6 +301,12 @@ export default function ShopPage() {
                             </span>
                           )
                         )}
+
+                        {inStock && off > 0 && (
+                          <span className="absolute right-0 top-0 z-10 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[10px] font-medium text-emerald-200 ring-1 ring-emerald-400/30">
+                            {off}% off
+                          </span>
+                        )}
                       </div>
 
                       <div className="relative z-10 mt-3 flex w-full flex-col items-center">
@@ -308,9 +316,10 @@ export default function ShopPage() {
                         </h2>
                         <p className="mt-1 line-clamp-1 max-w-[14rem] text-xs font-light text-[var(--ink-50)]">{p.notes?.join(", ")}</p>
 
-                        <p className="mt-2 font-mono text-sm text-white">
-                          {sized && <span className="mr-1 font-sans text-[11px] text-white/45">From</span>}
+                        <p className="mt-2 flex flex-wrap items-baseline justify-center gap-x-2 font-mono text-sm text-white">
+                          {sized && <span className="font-sans text-[11px] text-white/45">From</span>}
                           {inr(fromPrice(p))}
+                          {mrp && <span className="text-xs text-white/35 line-through decoration-white/50">{inr(mrp)}</span>}
                         </p>
 
                         <div className="mt-3">
